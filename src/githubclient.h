@@ -19,7 +19,9 @@ public:
   void repositories(int page = 1);
   void createRepository(const QString &name, const QString &description,
                         bool privateRepository, Reply callback,
-                        bool initializeReadme = false);
+                        bool initializeReadme = false,
+                        const QString &organization = {});
+  static QString normalizedRepositoryName(const QString &name);
   static QString repositoryFromRemote(const QString &url);
   void uploadReleaseAsset(const QString &repository, qint64 releaseId,
                           const QString &file, Reply callback);

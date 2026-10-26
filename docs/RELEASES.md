@@ -2,11 +2,17 @@
 
 ## Créer un dépôt
 
-**Mes dépôts GitHub… → Nouveau dépôt…** affiche le formulaire dans la même fenêtre. Le compte propriétaire est vérifié à chaque ouverture. Saisissez un nom, une description et la visibilité ; les dépôts sont privés par défaut. L’option README crée un premier commit distant et facilite le clonage immédiat.
+**Mes dépôts GitHub… → Nouveau dépôt…** affiche le formulaire dans la même fenêtre. Le compte connecté est vérifié à chaque ouverture et affiché sans bouton de connexion lorsque sa session est valide. Le sélecteur Propriétaire propose le compte personnel et les organisations dont vous êtes membre actif. Les règles de création disponibles sur GitHub déterminent les visibilités proposées ; les propriétaires d’organisation gardent leurs droits de création. Si GitHub n’expose pas toute la politique, les droits sont confirmés par le serveur lors de la création.
+
+Saisissez un nom, une description et la visibilité ; les dépôts sont privés par défaut. Les espaces sont remplacés automatiquement par des tirets, y compris dans un nom prérempli depuis le dossier local. Une visibilité interdite n’est jamais remplacée automatiquement par Public. L’option README crée un premier commit distant et facilite le clonage immédiat.
 
 Le bouton Créer est désactivé tant que le compte ou le nom ne sont pas valides. Pendant la requête, un indicateur montre la création en cours. Une erreur GitHub, notamment un nom déjà utilisé, reste affichée avec les champs conservés pour réessayer. Après succès, le dépôt est sélectionné dans la liste, même si un filtre masquait les autres résultats.
 
 ![Formulaire intégré](new-repository.png)
+
+**Publier sur GitHub** réutilise le même formulaire et le choix du propriétaire. Le dépôt distant est créé vide puis lié à origin ; le README n’est pas ajouté pour éviter une histoire distincte de celle du dépôt local. L’envoi des commits existants reste une option explicite.
+
+![Publication dans une organisation](publish-organization.png)
 
 ## Choisir le dépôt des releases
 

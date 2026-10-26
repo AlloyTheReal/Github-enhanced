@@ -193,20 +193,37 @@ void GitHubClient::repositories(int page) {
 void GitHubClient::createRepository(const QString &name,
                                     const QString &description,
                                     bool privateRepository, Reply callback,
-                                    bool initializeReadme) {
-  if (!QRegularExpression("^[A-Za-z0-9_.-]{1,100}$").match(name).hasMatch() ||
-      name == "." || name == "..") {
+                                    bool initializeReadme,
+                                    const QString &organization) {
+  const auto normalized = normalizedRepositoryName(name.trimmed());
+  if (!QRegularExpression("^[A-Za-z0-9_.-]{1,100}$")
+           .match(normalized)
+           .hasMatch() ||
+      normalized == "." || normalized == "..") {
     callback({}, "Le nom du dépôt est invalide.");
     return;
   }
-  api("user/repos", "POST",
-      {{"name", name},
+  if (!organization.isEmpty() &&
+      !QRegularExpression("^[A-Za-z0-9-]+$").match(organization).hasMatch()) {
+    callback({}, "Le nom de l’organisation est invalide.");
+    return;
+  }
+  api(organization.isEmpty() ? "user/repos" : "orgs/" + organization + "/repos",
+      "POST",
+      {{"name", normalized},
        {"description", description},
        {"private", privateRepository},
        {"auto_init", initializeReadme}},
       std::move(callback));
 }
 
+QString GitHubClient::normalizedRepositoryName(const QString &name) {
+  auto normalized = name;
+  return normalized.replace(
+      QRegularExpression("\\s+",
+                         QRegularExpression::UseUnicodePropertiesOption),
+      "-");
+}
 QString GitHubClient::repositoryFromRemote(const QString &value) {
   QString path;
   const auto text = value.trimmed();

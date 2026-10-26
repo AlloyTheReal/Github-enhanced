@@ -19,7 +19,7 @@ Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. 
 - Quatre thèmes intégrés, éditeur de couleurs, import/export JSON et taille de texte.
 - Chargement de catalogues de thèmes communautaires via HTTPS.
 - Connexion OAuth GitHub et ChatGPT/Codex avec les outils officiels ; installation guidée des composants.
-- Création de dépôt GitHub dans un formulaire intégré à Mes dépôts, avec propriétaire affiché et erreurs conservées.
+- Création/publication de dépôt sur le compte personnel ou une organisation accessible, avec compte connecté affiché, restrictions de visibilité et espaces remplacés par des tirets.
 - Releases par dépôt : brouillons, préversions, notes, publication, fichiers joints et suppression.
 - Liste et clonage des dépôts du compte, création/publication de dépôts GitHub, identité Git locale et éditeur `.gitignore`.
 - Proposition de message de commit par Codex à partir des modifications préparées automatiquement, avec annulation et validation manuelle.

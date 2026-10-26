@@ -131,6 +131,22 @@ int main(int argc, char **argv) {
                 input += QByteArray::fromStdString(line);
             payload=QJsonDocument::fromJson(input).object();record({{"payload", payload}});
         }
+        if(endpoint.startsWith("user/memberships/orgs")){
+            QJsonArray memberships;
+            auto membership=[](QString login,QString role="member",QString state="active"){return QJsonObject{{"organization",QJsonObject{{"login",login}}},{"role",role},{"state",state}};};
+            if(qEnvironmentVariable("GHE_FAKE_ORG_PAGES")=="1"){
+                if(endpoint.contains("page=2"))memberships.append(membership("second-page"));else for(int i=0;i<100;++i)memberships.append(membership("team-org"));
+            }else memberships={membership("team-org"),membership("public-only"),membership("blocked-org"),membership("admin-org","admin"),membership("invited-org","member","pending")};
+            std::cout<<QJsonDocument(memberships).toJson(QJsonDocument::Compact).constData();return 0;
+        }
+        if(post&&(endpoint=="user/repos"||(endpoint.startsWith("orgs/")&&endpoint.endsWith("/repos")))){
+            if(qEnvironmentVariable("GHE_FAKE_CREATE_ERROR")=="1"){output({{"message","Validation Failed"},{"errors",QJsonArray{QJsonObject{{"field","name"},{"code","already_exists"}}}}});std::cerr<<"HTTP 422 Validation Failed";return 1;}
+            auto owner=endpoint=="user/repos"?QString("octocat"):endpoint.section('/',1,1);auto name=payload["name"].toString("created");output({{"name",name},{"full_name",owner+"/"+name},{"clone_url","https://github.com/"+owner+"/"+name+".git"},{"html_url","https://github.com/"+owner+"/"+name},{"private",payload["private"]},{"default_branch",payload["auto_init"].toBool()?"main":""}});return 0;
+        }
+        if(endpoint.startsWith("orgs/")){
+            auto login=endpoint.section('/',1,1);const bool denied=login=="blocked-org"||login=="admin-org";
+            output({{"login",login},{"members_can_create_repositories",!denied},{"members_can_create_private_repositories",!denied&&login!="public-only"},{"members_can_create_public_repositories",!denied}});return 0;
+        }
         QString route=endpoint;if(endpoint.startsWith("https://uploads.github.com/"))route=QUrl(endpoint).path().mid(1);
         if(route.startsWith("repos/")){
             const auto parts=route.section('?',0,0).split('/');const auto repo=parts.value(1)+"/"+parts.value(2);QJsonObject store;QFile stored(qEnvironmentVariable("GHE_FAKE_SERVICE_STORE"));if(!stored.fileName().isEmpty()&&stored.open(QIODevice::ReadOnly))store=QJsonDocument::fromJson(stored.readAll()).object();stored.close();
@@ -156,14 +172,6 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (endpoint.startsWith("user/repos")) {
-            if (post) {
-                if(qEnvironmentVariable("GHE_FAKE_CREATE_ERROR")=="1") {output({{"message","Validation Failed"},{"errors",QJsonArray{QJsonObject{{"field","name"},{"code","already_exists"}}}}});std::cerr<<"HTTP 422 Validation Failed";return 1;}
-                auto name=payload["name"].toString("created");output({{"name", name},
-                        {"full_name", "octocat/"+name},
-                        {"clone_url", "https://github.com/octocat/"+name+".git"},
-                        {"html_url", "https://github.com/octocat/"+name}, {"private",payload["private"]},{"default_branch",payload["auto_init"].toBool()?"main":""}});
-                return 0;
-            }
             QJsonArray repos;
             const int count = endpoint.contains("page=2") ? 1 : 100;
             for (int i = 0; i < count; ++i) {

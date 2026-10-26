@@ -3,6 +3,7 @@
 #include "layoutdialog.h"
 #include "visuals.h"
 #include "repobrowser.h"
+#include "repositorycreateform.h"
 #include "releasesdialog.h"
 #include "reposettings.h"
 #include "accountdialog.h"
@@ -684,27 +685,25 @@ void MainWindow::repositorySettings() {
 }
 
 void MainWindow::publishRepository() {
-    if(repository.isEmpty()||runner.busy())return;
-    GlassDialog dialog(this);dialog.setWindowTitle("Publier sur GitHub");dialog.resize(520,360);auto *root=new QVBoxLayout(&dialog);root->setContentsMargins(24,24,24,24);root->setSpacing(12);auto *title=new QLabel(dialog.windowTitle());title->setObjectName("pageTitle");root->addWidget(title);
-    QLineEdit name(QFileInfo(repository).fileName().replace(' ','-')),detail;QComboBox visibility;visibility.addItems({"Privé","Public"});QCheckBox push("Envoyer aussi les commits existants");push.setChecked(false);auto *form=new QFormLayout;form->addRow("Nom du dépôt",&name);form->addRow("Description",&detail);form->addRow("Visibilité",&visibility);root->addLayout(form);root->addWidget(&push);
-    auto *hint=new QLabel("Le dépôt sera créé sur le compte GitHub actif puis lié à origin. Les fichiers non commités ne sont pas envoyés.");hint->setWordWrap(true);root->addWidget(hint);
-    auto *auth=new QPushButton("Connecter mon compte GitHub…");root->addWidget(auth);connect(auth,&QPushButton::clicked,&dialog,[this,&dialog]{AccountDialog login("gh",&github,&codex,&dialog);login.exec();});
-    QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText("Publier le dépôt");buttons.button(QDialogButtonBox::Ok)->setObjectName("primary");buttons.button(QDialogButtonBox::Cancel)->setText("Annuler");root->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-    if(dialog.exec()!=QDialog::Accepted)return;
-    beginOperation("Publication du dépôt sur GitHub");operation->step("Création du dépôt distant…");
-    const auto path=repository,repoName=name.text().trimmed(),description=detail.text();const bool privateRepo=visibility.currentIndex()==0,sendCommits=push.isChecked();
-    runGit({"remote","get-url","origin"},[this,path,repoName,description,privateRepo,sendCommits](const CommandResult &remote){
+    if(repository.isEmpty()||runner.busy()||indexer.busy()||pushCheck.busy())return;
+    const auto path=repository;
+    runGit({"remote","get-url","origin"},[this,path](const CommandResult &remote){
+        if(repository!=path)return;
         if(remote.ok()){QMessageBox::information(this,"Publication","Ce dépôt possède déjà un origin. Modifiez-le dans les réglages du dépôt ou publiez sa branche.");return;}
-        runGit({"rev-parse","--verify","HEAD"},[this,path,repoName,description,privateRepo,sendCommits](const CommandResult &head){
-            if(sendCommits&&!head.ok()){QMessageBox::information(this,"Publication","Créez d’abord un commit, ou désactivez l’envoi des commits.");return;}
-            github.createRepository(repoName,description,privateRepo,[this,path,sendCommits](QJsonValue value,QString error){
-                if(!error.isEmpty()){indexError=error;operation->finish(false,error);return;}
-                const auto object=value.toObject();const auto url=object["clone_url"].toString();const auto html=object["html_url"].toString();
+        runGit({"rev-parse","--verify","HEAD"},[this,path](const CommandResult &head){
+            const bool hasCommits=head.ok();
+            QTimer::singleShot(0,this,[this,path,hasCommits]{
+                if(repository!=path||runner.busy())return;
+                RepositoryPublishDialog dialog(&github,QFileInfo(path).fileName(),hasCommits,this);
+                if(dialog.exec()!=QDialog::Accepted)return;
+                const auto object=dialog.repository();const auto url=object["clone_url"].toString();const auto html=object["html_url"].toString();const bool sendCommits=dialog.sendExistingCommits();
+                if(GitHubClient::repositoryFromRemote(url)!=object["full_name"].toString()||object["full_name"].toString().isEmpty()){QMessageBox::warning(this,"Origin","GitHub a retourné une URL de dépôt non reconnue. Vérifiez le dépôt créé avant de configurer origin.");return;}
                 if(repository!=path){QMessageBox::information(this,"Dépôt créé","Le dépôt distant est créé : "+html+"\nRouvrez le dossier initial pour configurer origin.");return;}
+                beginOperation("Liaison du dépôt GitHub");
                 runner.run("git",{"remote","add","origin",url},path,[this,path,html,sendCommits](const CommandResult &result){
                     if(!result.ok()){indexError="Le dépôt GitHub a été créé : "+html+"\nMais origin n’a pas été configuré : "+result.message();operation->finish(false,indexError);return;}
                     log("Dépôt GitHub créé et lié à origin : "+html);
-                    if(sendCommits)QTimer::singleShot(0,this,[this,path]{if(repository==path)mutate({"push","--set-upstream","origin","HEAD"},"Publication des commits");});else refresh();
+                    if(sendCommits)QTimer::singleShot(0,this,[this,path]{if(repository==path)mutate({"push","--set-upstream","origin","HEAD"},"Publication des commits");});else {refresh();syncMonitor.inspect(path,true);}
                 });
             });
         });
