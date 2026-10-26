@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GitHub Enhanced
+Comment=Customizable native Git desktop client
+Comment[fr]=Client Git natif et personnalisable
+Exec=github-enhanced %f
+Icon=io.githubenhanced.desktop
+Terminal=false
+Categories=Development;RevisionControl;
+StartupNotify=true

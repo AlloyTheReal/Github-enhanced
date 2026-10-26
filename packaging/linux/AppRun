@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Execute the real binary so Qt locates usr/bin/qt.conf consistently,
+# both through FUSE and through the runtime's extract-and-run mode.
+export QT_PLUGIN_PATH="$app_dir/usr/plugins"
+exec "$app_dir/usr/bin/github-enhanced" "$@"

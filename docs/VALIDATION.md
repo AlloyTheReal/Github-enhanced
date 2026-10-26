@@ -1,0 +1,50 @@
+# Validation locale — 26 octobre 2026
+
+Environnement : Linux x86_64 (CachyOS), glibc 2.44, Qt 6.12.0, GCC 16.2.1 et CMake 4.4.4.
+
+- Compilation Release réussie.
+- Trois suites CTest réussies : opérations Git réelles et scénarios Git et personnalisation dans l’interface (placement, dimensions, onglets, panneaux détachés, commandes, profils, annulation et restauration après redémarrage).
+- Démarrage de l’exécutable vérifié avec Qt offscreen et dans la session graphique Wayland.
+- Captures des vraies fenêtres : `preview.png`, `workspace.png`, `customization.png`, `settings-appearance.png`, `settings-colors.png` et `color-picker.png`.
+- AppImage x86_64 générée ; démarrage validé en mode extraction sans FUSE.
+- Archive binaire Linux et archive source générées avec CPack.
+- Réglages : navigation, menus déroulants, sélecteur de couleur, validation HEX, création d’une variante locale, interrupteurs et restauration des options visuelles après Annuler.
+- Syntaxe Bash des scripts de distribution vérifiée.
+
+L’AppImage locale contient les bibliothèques de ce système récent : elle ne prouve pas une compatibilité avec d’anciennes distributions. Le workflow Linux compile sur Ubuntu 24.04 pour une base plus conservatrice.
+
+Non exécutés ici : builds Windows/macOS et intégration AppKit (`NSGlassEffectView`/`NSVisualEffectView`), génération DEB/RPM/EXE/MSI/DMG, installation native de ces paquets, GitHub CLI authentifié, synchronisation Gist, catalogue HTTPS externe, signatures/notarisation et revue Apple HIG/VoiceOver. Les configurations correspondantes sont présentes ; ces validations restent à faire sur les plateformes et comptes concernés.
+
+Les nouvelles intégrations sont testées avec un service local simulé : OAuth GitHub/Codex, réponse fragmentée de l’app-server, erreurs, refus des outils et des sessions API key, annulation, pagination des dépôts, création privée et préservation des brouillons. L’éditeur est testé par glissement des séparateurs et panneaux, annulation, aperçu des couleurs et restauration. Les réglages Git sont vérifiés sur un vrai dépôt temporaire, y compris la détection des modifications externes de `.gitignore`.
+
+L’initialisation JSON-RPC du véritable Codex app-server installé est validée. La connexion OAuth réelle et la production d’un message par un compte ChatGPT restent à vérifier avec le consentement utilisateur dans le navigateur. Aucun dépôt distant réel n’a été créé et aucun quota de génération n’a été consommé.
+
+## Préparation automatique, historique et gros commits
+
+Tests ajoutés : préparation automatique sans commandes d’indexation, conflit préservé, règles d’exclusion respectées, consultation des contenus de fichiers dans un commit, contenu précédent d’un fichier supprimé et diff individuel, retrait des accès récents sans suppression du dossier, progression Git et persistance des erreurs, génération simulée d’un gros commit et abréviation d’un contexte de plus de 128 Kio.
+
+Le test LFS utilise le composant officiel Git LFS 3.8.1 Linux x86_64, téléchargé avec empreinte SHA-256 vérifiée : fichier de 51 Mio converti en pointeur, règle `.gitattributes` indexée, nom contenant des crochets traité littéralement, contenu du fichier de travail conservé et préparation répétée stable. Aucun objet LFS n’a été envoyé à un serveur distant. Ce test est sauté si Git LFS n’est pas disponible ; la validation locale l’exécute avec `GHE_TEST_LFS`.
+
+Dernier passage complet : **3 suites CTest réussies**, avec le test Git LFS réel activé et aucun envoi distant. Captures vérifiées : `commit-browser.png` et `operation-progress.png` (exemple de progression simulé).
+
+## Suivi distant et défilement
+
+Tests Git réels avec un dépôt bare et deux copies temporaires : égalité avec références en cache non vérifiées, fetch vérifié, commit local non envoyé malgré un état de travail propre, commit entrant, divergence, distant inaccessible et maintien de l’erreur, absence de suivi, dépôt local et HEAD détachée. Le scénario UI vérifie le compteur, l’envoi explicite au dépôt bare de test, le retour à un état synchronisé, le refus d’agir sur une branche modifiée entre-temps et les fichiers encore à commiter après un envoi.
+
+Les interactions des capsules verticales/horizontales, la molette, le clavier et la réduction des animations sont vérifiées. Un test UI conserve le contenu et les positions de défilement des fichiers et du diff après une actualisation. Les captures `sync-ahead.png` et `capsule-scroll.png` sont réalisées sur les fenêtres Qt.
+
+Le diagnostic du dépôt utilisateur a été fait en lecture seule (`status`, branches, compte des commits et `ls-remote`). Aucun commit du dépôt utilisateur n’a été envoyé, aucune fusion ni réécriture d’historique n’a été effectuée.
+
+## Gros objets déjà commités et refus GH001
+
+Tests réels avec Git LFS 3.8.1 : objet de 51 Mio ajouté comme fichier Git classique puis supprimé dans un commit ultérieur, détection avant envoi, refus d’une conversion avec modifications locales, conversion de la partie non publiée, conservation du commit publié et d’une autre branche locale, référence de sauvegarde pointant sur le commit original, fichiers source conservés et push normal vers un dépôt bare temporaire.
+
+L’interface est testée dans les deux cas : annulation sans modification des commits, puis conversion et envoi LFS acceptés. Le nouvel identifiant est envoyé à la place de l’ancien, la sauvegarde conserve l’ancien commit et le fichier de travail conserve sa taille et son empreinte Git après conversion. Le contrôle a révélé que `GIT_LITERAL_PATHSPECS` ne doit pas être imposé aux commandes internes de Git LFS ; cet environnement est corrigé pour permettre la restauration des fichiers complets.
+
+Le dépôt utilisateur et le fichier AppImage incriminé ont été inspectés en lecture seule. Sa conversion et son envoi ne sont pas effectués par les tests ; l’action est disponible dans l’application lors du prochain envoi.
+
+## Création de dépôt et releases
+
+La création est testée avec un clic réel sur Nouveau dépôt, affichage du formulaire intégré, validation du compte, erreur GitHub 422, conservation du nom, nouvelle tentative et sélection du dépôt créé avec option README. Les tests de releases couvrent la détection du distant, le changement de dépôt avec réponses tardives, la consultation, l’édition, la publication d’une préversion, la suppression de release/pièce jointe avec confirmation, les droits en lecture seule et la reprise d’un transfert après échec sans duplication de release. Un nom de fichier contenant un espace et `#` est transmis intact.
+
+Les écritures GitHub sont simulées dans les tests : aucun dépôt, release ou fichier joint réel n’est créé ou supprimé sur le compte utilisateur. Le compte connecté et l’accès en lecture aux métadonnées et aux releases du dépôt existant ont été vérifiés avec le composant GitHub CLI installé. Les captures `new-repository.png` et `releases.png` proviennent de l’interface Qt avec données de test.

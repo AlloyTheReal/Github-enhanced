@@ -1,0 +1,78 @@
+name: Build and package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build qt6-base-dev qt6-base-dev-tools qt6-svg-dev qt6-wayland libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 rpm patchelf desktop-file-utils
+      - run: cmake --preset release
+      - run: cmake --build --preset release --parallel 2
+      - run: ctest --preset release
+      - name: Application startup
+        run: QT_QPA_PLATFORM=offscreen build/release/github-enhanced --smoke-test
+      - name: Native packages
+        run: cpack --config build/release/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B dist
+      - name: AppImage
+        run: bash packaging/linux/appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Installer tools
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          dotnet tool install --global wix --version 4.0.6
+          wix extension add --global WixToolset.UI.wixext/4.0.6
+      - run: cmake --preset release
+      - run: cmake --build --preset release --parallel 2
+      - run: ctest --preset release
+      - name: Application startup
+        run: build/release/github-enhanced.exe --smoke-test
+      - name: EXE and MSI
+        shell: pwsh
+        run: |
+          $env:PATH += ';C:\Program Files (x86)\NSIS'
+          cpack --config build/release/CPackConfig.cmake -G 'NSIS;WIX' -B dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: |
+            dist/*.exe
+            dist/*.msi
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+      - name: Configure universal app
+        run: cmake --preset release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+      - run: cmake --build --preset release --parallel 2
+      - run: ctest --preset release
+      - run: build/release/github-enhanced.app/Contents/MacOS/github-enhanced --smoke-test
+      - name: DMG
+        run: cpack --config build/release/CPackConfig.cmake -G DragNDrop -B dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/*.dmg
