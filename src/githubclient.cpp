@@ -103,9 +103,9 @@ void GitHubClient::api(const QString &endpoint, const QString &method,
               errors << object["message"].toString();
           }
           const auto message = response["message"].toString();
-          callback({}, !errors.isEmpty()    ? errors.join("\n")
-                       : !message.isEmpty() ? message
-                                            : r.message().right(2000));
+          const auto explanation = !errors.isEmpty() ? errors.join("\n") : message;
+          const auto original = r.message().right(6000);
+          callback({}, explanation.isEmpty() || original.contains(explanation) ? original : explanation + "\n" + original);
           return;
         }
         if (r.output.trimmed().isEmpty()) {
@@ -136,7 +136,15 @@ void GitHubClient::checkAccount() {
     emit accountChanged(currentAccount);
   });
 }
-void GitHubClient::login() {
+bool GitHubClient::workflowPermissionMissing(const QString &message) {
+  const auto text = message.toLower();
+  return text.contains("workflow") && text.contains("scope") &&
+         (text.contains("without") || text.contains("missing") ||
+          text.contains("insufficient") || text.contains("requires"));
+}
+void GitHubClient::login() { startAuthentication(false); }
+void GitHubClient::authorizeWorkflows() { startAuthentication(true); }
+void GitHubClient::startAuthentication(bool workflowsOnly) {
   if (auth.state() != QProcess::NotRunning)
     return;
   const auto path = executable();
@@ -151,8 +159,14 @@ void GitHubClient::login() {
   env.insert("GH_HOST", "github.com");
   env.insert("NO_COLOR", "1");
   auth.setProcessEnvironment(env);
-  auth.start(path, {"auth", "login", "--hostname", "github.com",
-                    "--git-protocol", "https", "--web", "--scopes", "gist"});
+  const QStringList arguments =
+      workflowsOnly
+          ? QStringList{"auth",       "refresh",  "--hostname",
+                        "github.com", "--scopes", "workflow"}
+          : QStringList{"auth",       "login",          "--hostname",
+                        "github.com", "--git-protocol", "https",
+                        "--web",      "--scopes",       "gist,workflow"};
+  auth.start(path, arguments);
   authDeadline.start(600000);
 }
 void GitHubClient::cancelLogin() {
@@ -283,7 +297,8 @@ void GitHubClient::uploadReleaseAsset(const QString &repository,
         if (!r.ok()) {
           auto error =
               QJsonDocument::fromJson(r.output).object()["message"].toString();
-          callback({}, error.isEmpty() ? r.message().right(2000) : error);
+          const auto original = r.message().right(6000);
+          callback({}, error.isEmpty() || original.contains(error) ? original : error + "\n" + original);
           return;
         }
         auto object = QJsonDocument::fromJson(r.output).object();

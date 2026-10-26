@@ -115,8 +115,10 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (args.value(0) == "auth") {
-        if (args.value(1) == "login")
+        if (args.value(1) == "login" || args.value(1) == "refresh") {
+            if (qEnvironmentVariableIntValue("GHE_FAKE_GH_AUTH_DENIED")) return 1;
             std::cout << "First copy your one-time code: ABCD-EFGH\nhttps://github.com/login/device\n";
+        }
         return 0;
     }
     if (args.value(0) == "api") {

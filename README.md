@@ -10,7 +10,7 @@ Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. 
 - Préparation automatique des fichiers modifiés, commits et historique avec contenu des fichiers et liste latérale à droite.
 - État distant distinct : commits à envoyer/recevoir, divergence, branche suivie, dernière vérification et erreurs réseau visibles.
 - Git LFS automatique pour les fichiers modifiés à partir de 50 Mio ; contrôle avant envoi et conversion proposée pour les gros fichiers déjà commités, avec sauvegarde locale. Installation automatique du composant officiel.
-- Fenêtre d’activité avec barre de progression, étapes et détails des opérations ; suppression des raccourcis récents par une croix.
+- Fenêtre d’activité avec progression et erreurs expliquées en français ; mode avancé mémorisé pour consulter les détails techniques ([guide](docs/ERRORS.md)). Suppression des raccourcis récents par une croix.
 - Création et changement de branche ; fetch, pull rapide uniquement, push, publication de branche, configuration d’origin ; stash et réapplication.
 - Interface inspirée du verre : palette charbon, cartes arrondies, chevrons fins et animations courtes.
 - Réglages à navigation latérale, éditeur de couleurs avec aperçu et sélecteur HSV/HEX, options de réduction des effets.

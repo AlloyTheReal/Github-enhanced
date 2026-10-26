@@ -14,6 +14,8 @@ public:
   }
   void checkAccount();
   void login();
+  void authorizeWorkflows();
+  static bool workflowPermissionMissing(const QString &message);
   void cancelLogin();
   void logout();
   void repositories(int page = 1);
@@ -46,4 +48,5 @@ private:
   QJsonObject currentAccount;
   bool closing = false;
   QString executable() const;
+  void startAuthentication(bool workflowsOnly);
 };

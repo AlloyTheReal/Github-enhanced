@@ -104,7 +104,7 @@ ReleaseEditor::ReleaseEditor(GitHubClient *service, const QString &repo,
   hint->setObjectName("muted");
   hint->setWordWrap(true);
   root->addWidget(hint);
-  status = new QLabel;
+  status = new DiagnosticLabel;
   status->setObjectName("releaseEditorStatus");
   status->setTextFormat(Qt::PlainText);
   status->setWordWrap(true);
@@ -142,7 +142,7 @@ void ReleaseEditor::fail(const QString &error) {
             "conservés. Vous pouvez réessayer.\n" +
                 error
           : error;
-  status->setText(message);
+  status->setError(message);
   operation->finish(false, message);
 }
 void ReleaseEditor::save() {
@@ -269,7 +269,7 @@ ReleasesDialog::ReleasesDialog(const QString &path, GitHubClient *service,
     selectRepository(repository);
   });
   auto *context = new QHBoxLayout;
-  remotes = new QComboBox;
+  remotes = new GlassComboBox;
   remotes->setObjectName("releaseRemote");
   context->addWidget(remotes);
   repositoryLabel = new QLabel("Recherche du dépôt GitHub…");
@@ -370,7 +370,7 @@ ReleasesDialog::ReleasesDialog(const QString &path, GitHubClient *service,
           [this] { openGithub(selected()["html_url"].toString()); });
   connect(assets, &QTreeWidget::itemSelectionChanged, this,
           &ReleasesDialog::updateActions);
-  status = new QLabel;
+  status = new DiagnosticLabel;
   status->setObjectName("releasesStatus");
   status->setTextFormat(Qt::PlainText);
   status->setWordWrap(true);
@@ -409,7 +409,7 @@ void ReleasesDialog::discover() {
   }
   locator.run("git", {"remote"}, localPath, [this](const CommandResult &r) {
     if (!r.ok()) {
-      status->setText(r.message());
+      status->setError(r.message());
       return;
     }
     auto names = QString::fromUtf8(r.output).split('\n', Qt::SkipEmptyParts);
@@ -463,7 +463,7 @@ void ReleasesDialog::selectRepository(const QString &name) {
                 if (!self || self->revision != expected)
                   return;
                 if (!error.isEmpty()) {
-                  self->status->setText(error);
+                  self->status->setError(error);
                   return;
                 }
                 auto repo = value.toObject();
@@ -493,7 +493,7 @@ void ReleasesDialog::refresh(int requestedPage) {
         if (!self || self->revision != expected)
           return;
         if (!error.isEmpty()) {
-          self->status->setText(error);
+          self->status->setError(error);
           return;
         }
         auto entries = value.toArray();
@@ -612,7 +612,7 @@ void ReleasesDialog::finish(const QString &error) {
   operation->finish(error.isEmpty(), error);
   lastOperationError = error;
   if (!error.isEmpty())
-    status->setText(error);
+    status->setError(error);
   updateActions();
   refresh();
 }

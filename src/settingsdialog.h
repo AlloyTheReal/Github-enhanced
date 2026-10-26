@@ -1,4 +1,5 @@
 #pragma once
+#include "diagnostics.h"
 #include "commandrunner.h"
 #include "visuals.h"
 #include <QJsonObject>
@@ -35,13 +36,13 @@ class SettingsDialog : public GlassDialog {
     QCheckBox *nativeBox;
     QSpinBox *fontBox;
     QLabel *accountLabel;
-    QLabel *syncStatus;
+    DiagnosticLabel *syncStatus;
     QListWidget *catalog;
     QLineEdit *catalogUrl;
     QString login;
     GitHubClient *github;
     CodexClient *codex;
-    QLabel *codexStatus;
+    DiagnosticLabel *codexStatus;
     QCheckBox *liveAppearance;
     QTimer *appearanceTimer;
     QJsonObject draft;

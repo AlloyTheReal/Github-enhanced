@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "accountdialog.h"
 #include "layoutdialog.h"
 #include "settingsdialog.h"
 #include "theme.h"
@@ -22,6 +23,12 @@ private slots:
         QCoreApplication::setOrganizationName("GitHubEnhancedTests");
         QCoreApplication::setApplicationName("UI");
         QSettings::setDefaultFormat(QSettings::IniFormat);
+    }
+    void advancedModeMenu() {
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());Diagnostics::instance().setAdvanced(false);
+        MainWindow window;window.show();auto *action=window.findChild<QAction *>("advancedModeAction");QVERIFY(action);QVERIFY(!action->isChecked());action->trigger();QVERIFY(Diagnostics::advanced());
+        auto *operation=window.findChild<OperationDialog *>();auto *toggle=operation->findChild<QCheckBox *>("operationAdvanced");QVERIFY(toggle->isChecked());
+        toggle->click();QVERIFY(!action->isChecked());QVERIFY(!Diagnostics::advanced());QVERIFY(window.close());
     }
     void repositoryWorkflow() {
         QTemporaryDir temporary;
@@ -304,6 +311,46 @@ private slots:
         if(convert){QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),30000);const auto head=git({"rev-parse","HEAD"}).output.trimmed();QVERIFY(head!=original);QCOMPARE(git({"rev-parse","origin/main"}).output.trimmed(),head);QVERIFY(git({"show","HEAD:Release.AppImage"}).output.startsWith("version https://git-lfs.github.com/spec/v1"));QVERIFY(git({"for-each-ref","--format=%(objectname)","refs/github-enhanced/lfs-backups/"}).output.contains(original));}
         else{QTRY_VERIFY(files->isEnabled());QCOMPARE(git({"rev-parse","HEAD"}).output.trimmed(),original);QCOMPARE(git({"rev-parse","origin/main"}).output.trimmed(),published);QVERIFY(!QFileInfo::exists(path+"/.gitattributes"));}
         QCOMPARE(QFileInfo(large.fileName()).size(),51LL*1024*1024);QCOMPARE(git({"hash-object","--no-filters","--","Release.AppImage"}).output.trimmed(),originalBlob);QTRY_VERIFY(files->isEnabled());QVERIFY(window.close());
+    }
+    void workflowPushRecovery_data() {
+        QTest::addColumn<bool>("consent"); QTest::newRow("authorize-and-retry")<<true; QTest::newRow("denied-no-retry")<<false;
+    }
+    void workflowPushRecovery() {
+#ifdef Q_OS_WIN
+        QSKIP("Le serveur Git de test utilise un hook POSIX");
+#endif
+        QFETCH(bool,consent);
+        QTemporaryDir data,configuration; QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());
+        ToolRuntime::setExecutable("gh",QCoreApplication::applicationDirPath()+"/fake-services");
+        TestEnvironment denied("GHE_FAKE_GH_AUTH_DENIED",consent?"0":"1");
+        const auto local=data.filePath("local"),remote=data.filePath("remote.git"); QDir().mkpath(local);
+        auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(local);p.start("git",args);p.waitForFinished(10000);return CommandResult{p.exitCode(),p.readAllStandardOutput(),p.readAllStandardError()};};
+        QVERIFY(git({"init","--bare","--initial-branch=main",remote}).ok()); QVERIFY(git({"init","--initial-branch=main"}).ok());
+        QVERIFY(git({"config","user.name","Workflow Test"}).ok()); QVERIFY(git({"config","user.email","workflow@example.invalid"}).ok()); QVERIFY(git({"config","commit.gpgsign","false"}).ok());
+        QFile file(local+"/test.txt"); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("base\n"); file.close();
+        QVERIFY(git({"add","--all"}).ok()); QVERIFY(git({"commit","-m","base"}).ok()); QVERIFY(git({"remote","add","origin",remote}).ok()); QVERIFY(git({"push","-u","origin","main"}).ok());
+        const auto oldHead=git({"rev-parse","HEAD"}).output.trimmed();
+        QVERIFY(file.open(QIODevice::Append)); file.write("pending\n"); file.close(); QVERIFY(git({"commit","-am","pending"}).ok());
+        QFile hook(remote+"/hooks/pre-receive"); QVERIFY(hook.open(QIODevice::WriteOnly));
+        hook.write("#!/bin/sh\necho 'refusing to allow an OAuth App to create or update workflow `.github/workflows/build.yml` without `workflow` scope' >&2\nexit 1\n"); hook.close(); QVERIFY(hook.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+        MainWindow window;window.show();window.openRepository(local);
+        auto *status=window.findChild<QLabel *>("syncStatus");auto *send=window.findChild<QPushButton *>("syncAction");
+        QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("1 commit à envoyer"),10000);QTRY_VERIFY(send->isEnabled());send->click();
+        auto *recovery=window.findChild<QPushButton *>("operationRecovery");QVERIFY(recovery);QTRY_VERIFY_WITH_TIMEOUT(recovery->isVisible(),10000);
+        QVERIFY(window.findChild<QLabel *>("operationDetail")->text().contains("autorisation workflow"));
+        QCOMPARE(git({"--git-dir",remote,"rev-parse","main"}).output.trimmed(),oldHead);
+        QTimer closeAuth;closeAuth.setInterval(20);bool completed=false;
+        auto *github=window.findChild<GitHubClient *>(); QVERIFY(github);
+        connect(github,&GitHubClient::loginFinished,&window,[&](bool success,const QString &){completed=true;QCOMPARE(success,consent);});
+        connect(&closeAuth,&QTimer::timeout,&window,[&]{
+            auto *dialog=window.findChild<AccountDialog *>(); if(!dialog||!completed)return;
+            if(consent)hook.remove(); dialog->close(); closeAuth.stop();
+        });
+        closeAuth.start();recovery->click();QVERIFY(completed);
+        if(consent){QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);}
+        else {QVERIFY(recovery->isVisible());QCOMPARE(git({"--git-dir",remote,"rev-parse","main"}).output.trimmed(),oldHead);}
+        QTRY_VERIFY(send->isEnabled()); QTRY_VERIFY(!github->busy());
+        QVERIFY(window.close());
     }
     void cleanWorkingTreeWithUnpushedCommit(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repository.path());p.start("git",args);return p.waitForFinished(10000)&&p.exitCode()==0;};

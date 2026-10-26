@@ -1,3 +1,4 @@
+#include "accountdialog.h"
 #include "codexclient.h"
 #include "githubclient.h"
 #include "reposettings.h"
@@ -114,6 +115,61 @@ class IntegrationTests : public QObject {
         bool found=false;for(const auto &r:records(data.path()+"/protocol.jsonl"))if(r["method"]=="turn/start"){
             const auto input=r["params"].toObject()["input"].toArray()[0].toObject()["text"].toString();QVERIFY(input.contains("Contexte abrégé"));QVERIFY(input.toUtf8().size()<140000);found=true;
         }QVERIFY(found);
+    }
+    void readableErrors_data() {
+        QTest::addColumn<QString>("raw"); QTest::addColumn<QString>("expected");
+        QTest::newRow("workflow") << "refusing to allow an OAuth App to create or update workflow build.yml without workflow scope" << "autorisation workflow";
+        QTest::newRow("lfs") << "remote: error: GH001: Large files detected." << "taille";
+        QTest::newRow("lfs-quota") << "Git LFS storage quota exceeded" << "LFS";
+        QTest::newRow("network") << "fatal: unable to access https://github.com/a/b: Could not resolve host: github.com" << "inaccessible";
+        QTest::newRow("tls") << "SSL certificate problem: unable to get local issuer certificate" << "sécurisée";
+        QTest::newRow("behind") << "! [rejected] main -> main (fetch first)" << "alignées";
+        QTest::newRow("conflict") << "CONFLICT (content): Merge conflict in main.cpp" << "conflits";
+        QTest::newRow("lock") << "fatal: Unable to create .git/index.lock: File exists" << "verrouiller";
+        QTest::newRow("disk") << "fatal: No space left on device" << "espace";
+        QTest::newRow("identity") << "Author identity unknown" << "identité";
+        QTest::newRow("not-repository") << "fatal: not a git repository (or any parent)" << "dépôt Git";
+        QTest::newRow("auth") << "gh: Bad credentials (HTTP 401)" << "connexion";
+        QTest::newRow("https-denied") << "fatal: unable to access 'https://github.com/a/b': The requested URL returned error: 403" << "autorisation";
+        QTest::newRow("rights") << "Resource not accessible by integration (HTTP 403)" << "autorisation";
+        QTest::newRow("missing") << "gh: Not Found (HTTP 404)" << "introuvable";
+        QTest::newRow("duplicate") << "Ce nom existe déjà. Choisissez un autre nom.\nHTTP 422 Validation Failed" << "existe déjà";
+        QTest::newRow("protected") << "remote: GH013: Repository rule violations found" << "règle";
+        QTest::newRow("rate") << "API rate limit exceeded" << "requêtes";
+        QTest::newRow("context") << "maximum context length exceeded" << "volumineuses";
+        QTest::newRow("timeout") << "Connection timed out" << "temps";
+    }
+    void readableErrors() {
+        QFETCH(QString,raw); QFETCH(QString,expected);
+        const auto explanation=Diagnostics::explain(raw);
+        QVERIFY(explanation.recognized); QVERIFY2(explanation.text().contains(expected,Qt::CaseInsensitive),qPrintable(explanation.text()));
+        QVERIFY(!explanation.action.isEmpty());
+    }
+    void diagnosticModesPreserveOriginalAndStatus() {
+        QTemporaryDir config; QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+        Diagnostics::instance().setAdvanced(false);
+        const QString original="fatal: unusual_backend_error <private>";
+        const auto unknown=Diagnostics::explain(original); QVERIFY(!unknown.recognized); QVERIFY(!unknown.text().contains("unusual_backend_error"));
+        const auto context=Diagnostics::explain("Le brouillon existe sur GitHub ; vous pouvez réessayer.\nHTTP 403 Resource not accessible");
+        QVERIFY(context.text().contains("Le brouillon existe")); QVERIFY(context.text().contains("autorisation"));
+        OperationDialog operation;operation.begin("Envoi");operation.append("Counting objects: 12% (1/8)\r");operation.finish(false,original);
+        auto *log=operation.findChild<QPlainTextEdit *>("operationLog");auto *label=operation.findChild<QLabel *>("operationDetail");auto *toggle=operation.findChild<QCheckBox *>("operationAdvanced");
+        QVERIFY(log->isHidden()); QVERIFY(!label->text().contains("unusual_backend_error")); QVERIFY(log->toPlainText().contains(original));
+        toggle->click(); QVERIFY(Diagnostics::advanced()); QVERIFY(QSettings().value("diagnostics/advanced").toBool()); QVERIFY(!log->isHidden());
+        QVERIFY(!label->text().contains("unusual_backend_error"));
+        DiagnosticLabel escaped;escaped.setError(original);QVERIFY(escaped.text().contains("&lt;private&gt;"));QVERIFY(!escaped.text().contains("<private>"));
+        DiagnosticLabel second;second.setError("HTTP 401 Bad credentials");QVERIFY(second.text().contains("Bad credentials"));
+        QMetaObject::invokeMethod(&second,"linkActivated",Q_ARG(QString,"details"));QVERIFY(!toggle->isChecked());QVERIFY(log->isHidden());QVERIFY(!second.text().contains("Bad credentials"));
+        second.setText("Chargement terminé");Diagnostics::instance().setAdvanced(true);QCOMPARE(second.text(),"Chargement terminé");
+        Diagnostics::instance().setAdvanced(false);operation.hide();
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")) {
+            const auto capture=qEnvironmentVariable("GHE_CAPTURE_DIR");QDir().mkpath(capture);
+            Theme::apply(Theme::read(QFINDTESTDATA("../themes/obsidian.json")),false,11);
+            operation.begin("Envoi vers GitHub");operation.append("Counting objects: 100% (113/113)\n");
+            operation.finish(false,"refusing to allow an OAuth App to create or update workflow build.yml without workflow scope");
+            operation.grab().save(capture+"/error-simple.png");toggle->click();operation.grab().save(capture+"/error-advanced.png");
+            Diagnostics::instance().setAdvanced(false);operation.hide();
+        }
     }
     void operationProgressAndErrors(){
         OperationDialog dialog;dialog.begin("Transfert du dépôt");dialog.step("Réception");dialog.append("Receiving objects: 42% (42/100)\r");
@@ -237,7 +293,11 @@ class IntegrationTests : public QObject {
         auto *model=qobject_cast<QStandardItemModel *>(owner->model());QVERIFY(model);QVERIFY(!model->item(findOwner("blocked-org"))->isEnabled());QVERIFY(model->item(findOwner("admin-org"))->isEnabled());QVERIFY(findOwner("invited-org")==-1);
         owner->setCurrentIndex(findOwner("public-only"));QCOMPARE(visibility->currentIndex(),0);QVERIFY(!submit->isEnabled());visibility->setCurrentIndex(1);QVERIFY(submit->isEnabled());
         owner->setCurrentIndex(findOwner("team-org"));visibility->setCurrentIndex(0);name->clear();QTest::keyClicks(name,"Nouveau projet org");QCOMPARE(name->text(),"Nouveau-projet-org");QCOMPARE(GitHubClient::normalizedRepositoryName(QString::fromUtf8("a\xc2\xa0" "b\tc")),"a-b-c");QVERIFY(form->findChild<QCheckBox *>("initializeRepositoryReadme")->isHidden());form->findChild<QCheckBox *>("publishExistingCommits")->setChecked(true);
-        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")){QDir().mkpath(qEnvironmentVariable("GHE_CAPTURE_DIR"));dialog.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/publish-organization.png");}
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")){
+            const auto capture=qEnvironmentVariable("GHE_CAPTURE_DIR");QDir().mkpath(capture);
+            dialog.grab().save(capture+"/publish-organization.png");
+            owner->showPopup();QTest::qWait(150);owner->view()->window()->grab().save(capture+"/organization-menu.png");owner->hidePopup();
+        }
         QSignalSpy finished(&dialog,&QDialog::finished);submit->click();QTRY_COMPARE(finished.count(),1);QCOMPARE(dialog.repository()["full_name"].toString(),"team-org/Nouveau-projet-org");QVERIFY(dialog.sendExistingCommits());
         bool correctEndpoint=false,correctBody=false;for(const auto &r:records(data.path()+"/publish.jsonl")){if(r["arguments"].toArray().contains("orgs/team-org/repos"))correctEndpoint=true;if(r.contains("payload")){auto p=r["payload"].toObject();if(p["name"]=="Nouveau-projet-org")correctBody=p["private"].toBool()&&!p["auto_init"].toBool();}}QVERIFY(correctEndpoint&&correctBody);
     }
@@ -269,6 +329,40 @@ class IntegrationTests : public QObject {
         QTimer::singleShot(40,&dialog,[]{if(auto *box=qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))box->button(QMessageBox::Yes)->click();});dialog.findChild<QPushButton *>("deleteRelease")->click();QTRY_COMPARE(list->topLevelItemCount(),1);dialog.reject();
         Env readOnly("GHE_FAKE_READ_ONLY","1");ReleasesDialog readonly({},&client,nullptr,"octocat/read-only");readonly.show();QTRY_COMPARE(readonly.findChild<QTreeWidget *>("repositoryReleases")->topLevelItemCount(),2);QVERIFY(!readonly.findChild<QPushButton *>("newRelease")->isEnabled());QVERIFY(!readonly.findChild<QPushButton *>("deleteRelease")->isEnabled());readonly.reject();
     }
+    void workflowAuthorizationAndRecovery() {
+        QTemporaryDir data, configuration;
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, configuration.path());
+        ToolRuntime::setExecutable("gh", fixture());
+        Env log("GHE_TEST_LOG", data.filePath("workflow.jsonl").toUtf8());
+        Env token("GH_TOKEN", "must-not-leak");
+        GitHubClient client(nullptr, fixture()); CodexClient codex;
+        QSignalSpy login(&client, &GitHubClient::loginFinished);
+        AccountDialog dialog("gh", &client, &codex, nullptr, true);
+        dialog.show(); dialog.findChild<QPushButton *>("primary")->click();
+        QTRY_COMPARE(login.count(), 1); QVERIFY(dialog.succeeded());
+        bool refreshed=false;
+        for (const auto &record: records(data.filePath("workflow.jsonl"))) {
+            if (!record.contains("arguments")) continue;
+            QVERIFY(!record["tokenPresent"].toBool());
+            const auto args=record["arguments"].toArray();
+            if (args.contains("refresh")) {
+                QCOMPARE(args, QJsonArray({"auth", "refresh", "--hostname", "github.com", "--scopes", "workflow"}));
+                refreshed=true;
+            }
+        }
+        QVERIFY(refreshed); dialog.close();
+        { Env denied("GHE_FAKE_GH_AUTH_DENIED", "1");
+          client.authorizeWorkflows(); QTRY_COMPARE(login.count(), 2); QVERIFY(!login.last()[0].toBool()); }
+        QVERIFY(GitHubClient::workflowPermissionMissing("refusing to allow an OAuth App to create or update workflow `.github/workflows/build.yml` without `workflow` scope"));
+        QVERIFY(!GitHubClient::workflowPermissionMissing("GH001: Large files detected"));
+        QVERIFY(!GitHubClient::workflowPermissionMissing("fatal: unable to access github.com: connection refused"));
+        OperationDialog operation; int calls=0; operation.begin("Envoi"); operation.finish(false,"workflow manquant");
+        operation.setRecoveryAction("Autoriser", [&]{++calls;});
+        auto *button=operation.findChild<QPushButton *>("operationRecovery"); QVERIFY(button->isVisible());
+        button->click(); button->click(); QCOMPARE(calls,1);
+        operation.setRecoveryAction("Autoriser", [&]{++calls;}); operation.begin("Autre opération");
+        QVERIFY(!button->isVisible()); button->click(); QCOMPARE(calls,1); operation.finish(true);
+    }
     void githubOAuthReposAndCreation() {
         QTemporaryDir data;
         Env log("GHE_TEST_LOG", (data.path() + "/github.jsonl").toUtf8());
@@ -294,10 +388,11 @@ class IntegrationTests : public QObject {
             created = error.isEmpty() && value.toObject()["clone_url"].toString().endsWith(".git");
         });
         QTRY_VERIFY(created);
-        bool helper = false, payload = false;
+        bool helper = false, payload = false, workflow = false;
         for (const auto &record : records(data.path() + "/github.jsonl")) {
             if (record.contains("arguments")) {
                 QVERIFY(!record["tokenPresent"].toBool());
+                if (record["arguments"].toArray().contains("gist,workflow")) workflow=true;
                 if (record["arguments"].toArray().contains("setup-git"))
                     helper = true;
             }
@@ -306,7 +401,7 @@ class IntegrationTests : public QObject {
                 payload = true;
             }
         }
-        QVERIFY(helper && payload);
+        QVERIFY(helper && payload && workflow);
         bool rejected = false;
         client.createRepository("invalid/name", {}, true,
                                 [&](QJsonValue, QString error) { rejected = !error.isEmpty(); });

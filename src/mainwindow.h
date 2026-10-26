@@ -1,4 +1,5 @@
 #pragma once
+#include "diagnostics.h"
 #include "commandrunner.h"
 #include "gitstatus.h"
 #include "githubclient.h"
@@ -100,7 +101,7 @@ private:
     QList<QAction *> repoActions;
     QAction *refreshAction;
     QPushButton *generateButton;
-    QLabel *generationStatus;
+    DiagnosticLabel *generationStatus;
     int messageRevision=0;
     QByteArray stagedFingerprint;
     QString generationRepository;
@@ -120,6 +121,7 @@ private:
     void runGit(const QStringList &args, CommandRunner::Callback callback);
     void mutate(const QStringList &args, const QString &label);
     void runMutation(const QStringList &args,const QString &label);
+    void authorizeWorkflowPermission(const QString &path,const QStringList &retryArguments={},const QString &retryTitle={});
     void checkedPush(const QStringList &args,const QString &label);
     void showCommit(const QString &sha);
     void showCommitFile();

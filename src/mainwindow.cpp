@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "diagnostics.h"
 #include "settingsdialog.h"
 #include "layoutdialog.h"
 #include "visuals.h"
@@ -98,7 +99,7 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(t
     connect(&github,&GitHubClient::busyChanged,this,[this](bool busy){if(!busy&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!codex.generating()&&operation->running())operation->finish(indexError.isEmpty(),indexError);updateActions();});
     updateActions();
     connect(&codex,&CodexClient::generationChanged,this,[this](bool active){generateButton->setText(active?"Annuler la génération":"Générer avec Codex");generationStatus->setText(active?"Codex rédige une proposition…":QString());if(active){beginOperation("Génération du message de commit");operation->step("Codex analyse les modifications préparées…");}else if(operation->running())operation->finish(true);});
-    connect(&codex,&CodexClient::errorOccurred,this,[this](const QString &message){operation->finish(false,message);generationStatus->setText(message);generateButton->setText("Générer avec Codex");});
+    connect(&codex,&CodexClient::errorOccurred,this,[this](const QString &message){operation->finish(false,message);generationStatus->setError(message);generateButton->setText("Générer avec Codex");});
     connect(&codex,&CodexClient::progressDetail,this,[this](const QString &text){if(codex.generating())operation->step(text);});
     connect(&codex,&CodexClient::messageGenerated,this,&MainWindow::applyGeneratedMessage);
 }
@@ -132,7 +133,7 @@ void MainWindow::buildInterface() {
     auto *branchBlock = new QWidget; branchBlock->setObjectName("toolbarBlock");
     auto *branchLayout = new QVBoxLayout(branchBlock); branchLayout->setContentsMargins(16, 4, 20, 4); branchLayout->setSpacing(1);
     branchLayout->addWidget(label("Branche actuelle", "caption"));
-    branches = new QComboBox; branches->setObjectName("branchSelector"); branches->setMinimumWidth(175);
+    branches = new GlassComboBox; branches->setObjectName("branchSelector"); branches->setMinimumWidth(175);
     branches->setAccessibleName("Branche courante"); branches->setPlaceholderText("Aucune branche");
     branchLayout->addWidget(branches);
     identify(mainToolbar->addWidget(branchBlock), "tool-branch", "Sélecteur de branche");
@@ -204,7 +205,7 @@ void MainWindow::buildInterface() {
     commitSubject=new QLabel;commitSubject->setObjectName("commitSubject");commitSubject->setTextFormat(Qt::PlainText);commitSubject->setWordWrap(true);auto subjectFont=commitSubject->font();subjectFont.setBold(true);commitSubject->setFont(subjectFont);commitBrowserLayout->addWidget(commitSubject);
     commitMeta=new QLabel;commitMeta->setObjectName("muted");commitMeta->setTextFormat(Qt::PlainText);commitMeta->setWordWrap(true);commitMeta->setTextInteractionFlags(Qt::TextSelectableByMouse);commitBrowserLayout->addWidget(commitMeta);
     commitInfo=new QLabel;commitInfo->setObjectName("commitInfo");commitInfo->setTextFormat(Qt::PlainText);commitInfo->setWordWrap(true);commitInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);commitBrowserLayout->addWidget(commitInfo);
-    commitView=new QComboBox;commitView->setObjectName("commitFileView");commitView->addItems({"Contenu du fichier","Modifications du fichier"});commitBrowserLayout->addWidget(commitView);
+    commitView=new GlassComboBox;commitView->setObjectName("commitFileView");commitView->addItems({"Contenu du fichier","Modifications du fichier"});commitBrowserLayout->addWidget(commitView);
     commitFiles=new QTreeWidget;commitFiles->setObjectName("commitFiles");commitFiles->setHeaderHidden(true);commitFiles->setRootIsDecorated(false);commitFiles->setAccessibleName("Fichiers du commit");commitBrowserLayout->addWidget(commitFiles,1);
     contentRow->addWidget(commitBrowser);contentRow->setStretchFactor(0,1);contentRow->setSizes({800,280});commitBrowser->hide();diffLayout->addWidget(contentRow,1);pages->addWidget(diffPage);
     connect(commitFiles,&QTreeWidget::itemSelectionChanged,this,&MainWindow::showCommitFile);connect(commitView,&QComboBox::activated,this,[this]{showCommitFile();});
@@ -234,7 +235,7 @@ void MainWindow::buildInterface() {
     description->setMinimumHeight(56); description->setMaximumHeight(100);
     commitLayout->addWidget(summary); commitLayout->addWidget(description);
     generateButton=button("Générer avec Codex",commitLayout,[this]{generateMessage();},this);generateButton->setObjectName("generateCommitMessage");generateButton->setToolTip("Envoie un résumé des modifications à votre session Codex pour proposer un message. Aucun commit n’est créé automatiquement.");
-    generationStatus=label({},"muted");generationStatus->setWordWrap(true);generationStatus->setObjectName("generationStatus");commitLayout->addWidget(generationStatus);
+    generationStatus=new DiagnosticLabel;generationStatus->setWordWrap(true);generationStatus->setObjectName("generationStatus");commitLayout->addWidget(generationStatus);
     auto *commitButton = button("Créer le commit", commitLayout, [this] { commit(); }, this, true); commitButton->setObjectName("primary");
     commitButton->setToolTip("Créer un commit avec tous les fichiers modifiés");
     commitDock = dock(this, "Commit", "commit", commitWidget, Qt::LeftDockWidgetArea);
@@ -277,6 +278,7 @@ void MainWindow::buildMenus() {
     add("Publier ce dépôt sur GitHub…",[this]{publishRepository();});
     add("Réglages du dépôt…",[this]{repositorySettings();});
     add("Releases du dépôt…",[this]{showReleases();});
+    add("Autoriser les workflows GitHub…",[this]{authorizeWorkflowPermission(repository);});
     add("Générer un message avec Codex",[this]{generateMessage();});
     add("Publier la branche sur origin", [this] { mutate({"push", "--set-upstream", "origin", "HEAD"}, "Publication de la branche"); });
     add("Configurer origin…", [this] {
@@ -284,7 +286,7 @@ void MainWindow::buildMenus() {
         if (!ok || url.isEmpty() || url.startsWith('-') || runner.busy()) return;
         runGit({"remote", "get-url", "origin"}, [this, url](const CommandResult &r) {
             runGit(r.ok() ? QStringList{"remote", "set-url", "origin", url} : QStringList{"remote", "add", "origin", url}, [this](const CommandResult &result) {
-                if (!result.ok()) QMessageBox::warning(this, "Origin", result.message());
+                if (!result.ok()) Diagnostics::showError(this, "Origin", result.message());
                 else log("Dépôt distant origin configuré.");
             });
         });
@@ -297,6 +299,10 @@ void MainWindow::buildMenus() {
     for (auto *d : layoutPanels()) view->addAction(d->toggleViewAction());
     view->addAction(toolbar->toggleViewAction());
     view->addSeparator();
+    auto *advanced = view->addAction("Mode avancé · détails techniques");
+    advanced->setObjectName("advancedModeAction"); advanced->setCheckable(true); advanced->setChecked(Diagnostics::advanced());
+    connect(advanced, &QAction::toggled, &Diagnostics::instance(), &Diagnostics::setAdvanced);
+    connect(&Diagnostics::instance(), &Diagnostics::advancedChanged, this, [this,advanced](bool enabled){QSignalBlocker blocker(advanced);advanced->setChecked(enabled);if(!repository.isEmpty())updateSyncStatus(syncState);});
     view->addAction("Personnaliser l’interface…", QKeySequence("Ctrl+Alt+L"), this, &MainWindow::editLayout);
     lockAction = view->addAction("Verrouiller la disposition"); lockAction->setCheckable(true); lockAction->setChecked(true);
     connect(lockAction, &QAction::toggled, this, [this](bool locked) { setLayoutEditing(!locked); });
@@ -357,7 +363,7 @@ void MainWindow::openRepository(const QString &path) {
     if (runner.busy() || indexer.busy() || pushCheck.busy() || path.isEmpty()) return;
     const QString absolute = QFileInfo(path).absoluteFilePath();
     runner.run("git", {"rev-parse", "--show-toplevel"}, absolute, [this](const CommandResult &r) {
-        if (!r.ok()) { QMessageBox::warning(this, "Dépôt inaccessible", r.message()); return; }
+        if (!r.ok()) { Diagnostics::showError(this, "Dépôt inaccessible", r.message()); return; }
         auto root = r.output;
         if (root.endsWith('\n')) root.chop(1);
         repository = QString::fromUtf8(root);historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
@@ -384,7 +390,7 @@ void MainWindow::refresh() {
     indexer.prepare(repository,[this](QString error){
         const bool newError=error!=indexError;indexError=error;
         if(!error.isEmpty()){
-            statusBar()->showMessage(error);if(newError)log(error);
+            statusBar()->showMessage(Diagnostics::explain(error).title);if(newError)log(error);
             if(newError||operation->running()){if(!operation->running())operation->begin("Préparation du commit");operation->finish(false,error);}
         }
         refreshViews();
@@ -449,10 +455,11 @@ void MainWindow::updateActions() {
 
 void MainWindow::updateSyncStatus(const RepositorySyncState &state){
     if(state.repository!=repository)return;
+    if(!state.error.isEmpty()&&state.error!=syncState.error)log("Vérification du distant :\n"+state.error);
     syncState=state;
     auto commits=[](int count){return QString::number(count)+(count==1?" commit":" commits");};
     QString message="Branche "+state.branch;QString action;
-    if(!state.error.isEmpty()){message+=" · État distant non vérifié\n"+state.error;action="Réessayer";}
+    if(!state.error.isEmpty()){message+=" · État distant non vérifié\n"+Diagnostics::explain(state.error).text();action="Réessayer";}
     else if(state.kind=="ahead"){message+=QString(" · %1 à envoyer vers %2").arg(commits(state.ahead),state.upstream);action="Envoyer "+commits(state.ahead);}
     else if(state.kind=="behind"){message+=QString(" · %1 à récupérer depuis %2").arg(commits(state.behind),state.upstream);action="Récupérer "+commits(state.behind);}
     else if(state.kind=="diverged"){message+=QString(" · %1 à envoyer, %2 à récupérer · branches divergentes").arg(commits(state.ahead),commits(state.behind));action="Voir les écarts";}
@@ -468,7 +475,7 @@ void MainWindow::updateSyncStatus(const RepositorySyncState &state){
     else if(state.kind=="detached")message="HEAD détachée · sélectionnez une branche pour la synchroniser";
     else message+=" · État distant inconnu";
     if(!state.remote.isEmpty()&&state.error.isEmpty())message+=state.checkedAt.isValid()?"\nDistant vérifié à "+state.checkedAt.toString("HH:mm:ss"):"\nDistant non vérifié · comparaison avec les références en cache";
-    syncStatus->setText(message);syncStatus->setToolTip("Dossier : "+repository+"\nBranche locale : "+state.branch+"\nSuivi : "+state.upstream);syncAction->setText(action);syncAction->setVisible(!action.isEmpty());updateActions();
+    syncStatus->setText(message);syncStatus->setToolTip("Dossier : "+repository+"\nBranche locale : "+state.branch+"\nSuivi : "+state.upstream+(Diagnostics::advanced()&&!state.error.isEmpty()?"\n\nDétails techniques :\n"+state.error:QString()));syncAction->setText(action);syncAction->setVisible(!action.isEmpty());updateActions();
 }
 void MainWindow::performSyncAction(){
     if(repository.isEmpty()||runner.busy()||indexer.busy()||syncMonitor.busy())return;
@@ -534,14 +541,42 @@ void MainWindow::runMutation(const QStringList &args, const QString &title) {
     if (repository.isEmpty() || runner.busy()) return;
     beginOperation(title);log(title + "…");
     auto progressArgs=args;if(!args.isEmpty()&&QStringList{"push","pull","fetch"}.contains(args.first()))progressArgs.insert(1,"--progress");
-    runGit(progressArgs, [this, title](const CommandResult &r) {
+    const auto path=repository;
+    runGit(progressArgs, [this, path, args, title](const CommandResult &r) {
         log(title + (r.ok() ? " : terminé" : " : échec") + '\n' + r.message());
         if (!r.ok()) {
             QStringList important;
             for(const auto &line:r.message().split(QRegularExpression("[\\r\\n]+")))if(QRegularExpression("error:|erreur\\s*:|fatal:|remote rejected|GH001",QRegularExpression::CaseInsensitiveOption).match(line).hasMatch())important.append(line);
-            indexError=important.isEmpty()?r.message().right(2500):important.join('\n').right(3500);operation->finish(false,indexError);
+            indexError=important.isEmpty()?r.message().right(2500):important.join('\n').right(3500);
+            if(args.value(0)=="push"&&GitHubClient::workflowPermissionMissing(r.message())){
+                indexError="GitHub a refusé les fichiers .github/workflows/ : la connexion OAuth ne possède pas l’autorisation workflow. Autorisez-la pour pouvoir envoyer ces commits.";
+                operation->finish(false,indexError);operation->setRecoveryAction("Autoriser workflow et réessayer",[this,path,args,title]{authorizeWorkflowPermission(path,args,title);});
+            }else operation->finish(false,indexError);
         }
         refresh();syncMonitor.inspect(repository,true);
+    });
+}
+
+void MainWindow::authorizeWorkflowPermission(const QString &path,const QStringList &retryArguments,const QString &retryTitle){
+    if(path.isEmpty()||repository!=path||pushCheck.busy())return;
+    const auto expectedBranch=syncState.branch,expectedHead=syncState.head;
+    operation->hide();AccountDialog auth("gh",&github,&codex,this,true);
+    QTimer::singleShot(0,&auth,[&auth]{if(auto *button=auth.findChild<QPushButton *>("primary"))button->click();});
+    auth.exec();
+    if(!auth.succeeded()){
+        operation->finish(false,"L’autorisation workflow n’a pas été ajoutée. L’envoi reste en attente.");operation->setRecoveryAction("Autoriser workflow et réessayer",[this,path,retryArguments,retryTitle]{authorizeWorkflowPermission(path,retryArguments,retryTitle);});return;
+    }
+    if(repository!=path)return;
+    if(retryArguments.isEmpty()){statusBar()->showMessage("Autorisation workflow ajoutée. Vous pouvez envoyer vos commits.");return;}
+    // Consent can take minutes. Recheck the branch and revision before retrying.
+    runGit({"symbolic-ref","--quiet","--short","HEAD"},[this,path,expectedBranch,expectedHead,retryArguments,retryTitle](const CommandResult &branch){
+        if(repository!=path)return;
+        if(!branch.ok()||QString::fromUtf8(branch.output).trimmed()!=expectedBranch){syncMonitor.inspect(path,true);statusBar()->showMessage("La branche a changé. Vérifiez-la avant de relancer l’envoi.");return;}
+        runGit({"rev-parse","--verify","HEAD"},[this,path,expectedHead,retryArguments,retryTitle](const CommandResult &head){
+            if(repository!=path)return;
+            if(!head.ok()||QString::fromUtf8(head.output).trimmed()!=expectedHead){syncMonitor.inspect(path,true);statusBar()->showMessage("Les commits ont changé. Relancez l’envoi depuis le bandeau.");return;}
+            QTimer::singleShot(0,this,[this,path,retryArguments,retryTitle]{if(repository==path)mutate(retryArguments,retryTitle);});
+        });
     });
 }
 
@@ -717,7 +752,7 @@ void MainWindow::generateMessage() {
     const int revision=++messageRevision;generationRepository=repository;generationAbbreviated=false;previousSummary=summary->text();previousDescription=description->toPlainText();beginOperation("Préparation du message Codex");generationStatus->setText("Lecture des modifications…");
     indexer.prepare(repository,[this,revision](QString error){
         if(revision!=messageRevision)return;
-        if(!error.isEmpty()){indexError=error;generationStatus->setText(error);operation->finish(false,error);return;}
+        if(!error.isEmpty()){indexError=error;generationStatus->setError(error);operation->finish(false,error);return;}
         runGit({"diff","--cached","--raw","--no-abbrev","-z","--"},[this,revision](const CommandResult &raw){
             if(revision!=messageRevision)return;
             if(!raw.ok()||raw.output.isEmpty()){generationStatus->setText("Aucune modification à décrire.");operation->finish(true,"Aucune modification à décrire.");return;}
@@ -764,7 +799,7 @@ void MainWindow::initRepository() {
     beginOperation("Création du dépôt local");
     runner.run("git", {"init", "--initial-branch=main", "--", path}, {}, [this, path](const CommandResult &r) {
         if (r.ok()) QTimer::singleShot(0, this, [this, path] { openRepository(path); });
-        else QMessageBox::warning(this, "Création impossible", r.message().left(4000));
+        else Diagnostics::showError(this, "Création impossible", r.message().left(4000));
     });
 }
 
@@ -774,9 +809,9 @@ void MainWindow::newBranch() {
     if (!ok || name.isEmpty()) return;
     beginOperation("Création de la branche");
     runGit({"check-ref-format", "--branch", name}, [this, name](const CommandResult &r) {
-        if (!r.ok()) { QMessageBox::warning(this, "Branche invalide", r.message()); return; }
+        if (!r.ok()) { Diagnostics::showError(this, "Branche invalide", r.message()); return; }
         runGit({"switch", "-c", name, "--"}, [this](const CommandResult &result) {
-            if (!result.ok()) QMessageBox::warning(this, "Branche", result.message());
+            if (!result.ok()) Diagnostics::showError(this, "Branche", result.message());
             refresh();
         });
     });

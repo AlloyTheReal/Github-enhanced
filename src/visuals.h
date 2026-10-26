@@ -1,5 +1,8 @@
 #pragma once
 #include <QDialog>
+#include <QComboBox>
+#include <QPointer>
+#include <QPropertyAnimation>
 #include <QCheckBox>
 #include <QStackedWidget>
 #include <QVariantAnimation>
@@ -82,3 +85,14 @@ QColor pickGlassColor(const QColor &initial, QWidget *parent);
 bool installNativeGlass(QWidget *widget);
 bool systemReducesMotion();
 bool systemReducesTransparency();
+
+// A shared popup view avoids platform menu delegates with inconsistent spacing.
+class GlassComboBox : public QComboBox {
+    Q_OBJECT
+public:
+    explicit GlassComboBox(QWidget *parent = nullptr);
+    void showPopup() override;
+    void hidePopup() override;
+private:
+    QPointer<QPropertyAnimation> popupAnimation;
+};

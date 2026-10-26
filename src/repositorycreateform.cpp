@@ -34,10 +34,10 @@ RepositoryCreateForm::RepositoryCreateForm(GitHubClient *service,
   name->setMaxLength(100);
   description = new QLineEdit;
   description->setObjectName("newRepositoryDescription");
-  visibility = new QComboBox;
+  visibility = new GlassComboBox;
   visibility->addItems({"Privé", "Public"});
   visibility->setObjectName("newRepositoryVisibility");
-  owner = new QComboBox;
+  owner = new GlassComboBox;
   owner->setObjectName("repositoryOwner");
   form->addRow("Propriétaire", owner);
   form->addRow("Nom du dépôt", name);
@@ -64,7 +64,7 @@ RepositoryCreateForm::RepositoryCreateForm(GitHubClient *service,
   hint->setWordWrap(true);
   hint->setObjectName("muted");
   root->addWidget(hint);
-  status = new QLabel;
+  status = new DiagnosticLabel;
   status->setObjectName("repositoryCreationStatus");
   status->setTextFormat(Qt::PlainText);
   status->setWordWrap(true);
@@ -132,7 +132,7 @@ void RepositoryCreateForm::loadAccount() {
                   return;
                 if (!error.isEmpty()) {
                   self->account->setText("Compte GitHub non connecté");
-                  self->status->setText(error);
+                  self->status->setError(error);
                   self->authenticated = false;
                   self->login->show();
                 } else {
@@ -164,9 +164,7 @@ void RepositoryCreateForm::loadOrganizations(int page, int revision) {
           return;
         if (!error.isEmpty()) {
           if (!self->working)
-            self->status->setText("Le compte personnel est disponible. "
-                                  "Chargement des organisations impossible : " +
-                                  error);
+            self->status->setError(error);
           return;
         }
         const auto memberships = value.toArray();
@@ -300,7 +298,7 @@ void RepositoryCreateForm::create() {
           return;
         self->setWorking(false);
         if (!error.isEmpty()) {
-          self->status->setText(error);
+          self->status->setError(error);
           return;
         }
         auto repository = value.toObject();

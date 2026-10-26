@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Network)
-set(INTEGRATION_SOURCES src/repositorycreateform.cpp src/repositorycreateform.h src/releasesdialog.cpp src/releasesdialog.h
+set(INTEGRATION_SOURCES src/diagnostics.cpp src/diagnostics.h src/repositorycreateform.cpp src/repositorycreateform.h src/releasesdialog.cpp src/releasesdialog.h
     src/pushpreflight.cpp src/pushpreflight.h
     src/repositorysync.cpp src/repositorysync.h src/capsulescrollbar.cpp src/capsulescrollbar.h
     src/operationdialog.cpp src/operationdialog.h src/repositoryindex.cpp src/repositoryindex.h

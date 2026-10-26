@@ -1,4 +1,5 @@
 #pragma once
+#include "diagnostics.h"
 #include "githubclient.h"
 #include "visuals.h"
 class QTreeWidget;
@@ -27,7 +28,7 @@ protected:
 private:
   QTreeWidget *list;
   QLineEdit *search;
-  QLabel *status;
+  DiagnosticLabel *status;
   QPushButton *more;
   QJsonArray repositories;
   int page = 0;

@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "diagnostics.h"
 #include "theme.h"
 #include "accountdialog.h"
 #include "toolruntime.h"
@@ -235,7 +236,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     dark->setChecked(QColor(draft["surface"].toString()).lightness() < 128);
     light->setChecked(!dark->isChecked());
     layout->addWidget(settingRow("Style de l’interface", {}, modes));
-    themeBox = new QComboBox;
+    themeBox = new GlassComboBox;
     themeBox->setObjectName("themeSelector");
     themeBox->setMinimumWidth(220);
     themeBox->setMaximumWidth(260);
@@ -381,7 +382,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
         QString error;
         auto t = catalogThemes[row];
         if (!Theme::install(t, &error)) {
-            QMessageBox::warning(this, "Thème", error);
+            Diagnostics::showError(this, "Thème", error);
             return;
         }
         loadThemes(t["id"].toString());
@@ -442,7 +443,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     layout->addWidget(caption("Un Gist secret est accessible aux personnes qui connaissent son lien. La "
                               "session GitHub est partagée avec GitHub CLI.",
                               "rowSubtitle"));
-    syncStatus = caption({}, "muted");
+    syncStatus = new DiagnosticLabel; syncStatus->setObjectName("muted");
     layout->addWidget(syncStatus);
     layout->addStretch();
     pages->addWidget(scrollPage(account));
@@ -451,7 +452,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
         accountLabel->setText(login.isEmpty() ? "Aucun compte GitHub connecté" : "Connecté : @" + login);
     });
     connect(github, &GitHubClient::errorOccurred, this,
-            [this](const QString &error) { syncStatus->setText(error); });
+            [this](const QString &error) { syncStatus->setError(error); });
 
     auto *accessibility = newPage(&layout);
     motionBox = new GlassSwitch;
@@ -472,7 +473,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     pages->addWidget(scrollPage(accessibility));
 
     auto *codexPage = newPage(&layout);
-    codexStatus = caption("Compte Codex non vérifié", "rowTitle");
+    codexStatus = new DiagnosticLabel; codexStatus->setText("Compte Codex non vérifié"); codexStatus->setObjectName("rowTitle");
     layout->addWidget(codexStatus);
     auto *loginCodex = new QPushButton("Se connecter avec ChatGPT");
     layout->addWidget(settingRow(
@@ -506,7 +507,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
                                  : "Aucun compte ChatGPT connecté");
     });
     connect(codex, &CodexClient::errorOccurred, this,
-            [this](const QString &error) { codexStatus->setText(error); });
+            [this](const QString &error) { codexStatus->setError(error); });
 
     auto *footer = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     footer->setObjectName("settingsButtons");
@@ -519,11 +520,11 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     connect(footer, &QDialogButtonBox::accepted, this, [this] {
         QString error;
         if (!Theme::validate(draft, &error)) {
-            QMessageBox::warning(this, "Thème", error);
+            Diagnostics::showError(this, "Thème", error);
             return;
         }
         if (draft["id"].toString().startsWith("custom-") && !Theme::install(draft, &error)) {
-            QMessageBox::warning(this, "Thème", error);
+            Diagnostics::showError(this, "Thème", error);
             return;
         }
         emit profileDownloaded(currentProfile());
@@ -674,7 +675,7 @@ void SettingsDialog::importTheme() {
     auto t = Theme::read(path);
     QString error;
     if (!Theme::install(t, &error))
-        QMessageBox::warning(this, "Import impossible", error);
+        Diagnostics::showError(this, "Import impossible", error);
     else
         loadThemes(t["id"].toString());
 }
@@ -687,7 +688,7 @@ void SettingsDialog::exportTheme() {
         return;
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(draft).toJson()) < 0 || !file.commit())
-        QMessageBox::warning(this, "Export impossible", file.errorString());
+        Diagnostics::showError(this, "Export impossible", file.errorString());
 }
 
 void SettingsDialog::editTheme() {
@@ -755,7 +756,7 @@ void SettingsDialog::sync(bool upload) {
         "gh", {"api", "--hostname", "github.com", "--paginate", "--slurp", "gists?per_page=100"}, {},
         [this, upload](const CommandResult &r) {
             if (!r.ok()) {
-                syncStatus->setText(r.message().left(1000));
+                syncStatus->setError(r.message());
                 return;
             }
             QString gist;
@@ -795,8 +796,8 @@ void SettingsDialog::sync(bool upload) {
                 runner.run(
                     "gh", args, {},
                     [this](const CommandResult &result) {
-                        syncStatus->setText(result.ok() ? "Préférences envoyées pour @" + login
-                                                        : result.message().left(1000));
+                        if(result.ok()) syncStatus->setText("Préférences envoyées pour @" + login);
+                        else syncStatus->setError(result.message());
                     },
                     QJsonDocument(payload).toJson(QJsonDocument::Compact));
             } else {

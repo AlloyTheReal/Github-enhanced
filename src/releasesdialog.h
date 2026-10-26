@@ -1,4 +1,5 @@
 #pragma once
+#include "diagnostics.h"
 #include "githubclient.h"
 #include "operationdialog.h"
 #include "visuals.h"
@@ -31,7 +32,7 @@ private:
   QPlainTextEdit *notes;
   QCheckBox *draft, *prerelease;
   QListWidget *attachments;
-  QLabel *status;
+  DiagnosticLabel *status;
   QPushButton *submit, *choose, *remove;
   OperationDialog *operation;
   QStringList pending;
@@ -58,7 +59,8 @@ private:
   CommandRunner locator;
   QString localPath, repository, defaultBranch;
   QComboBox *remotes;
-  QLabel *repositoryLabel, *status, *detail;
+  QLabel *repositoryLabel, *detail;
+  DiagnosticLabel *status;
   QTreeWidget *list, *assets;
   QPlainTextEdit *notes;
   QPushButton *createButton, *editButton, *deleteButton, *addFiles,

@@ -41,7 +41,7 @@ RepoBrowser::RepoBrowser(GitHubClient *service, QWidget *parent)
   list->setRootIsDecorated(false);
   list->header()->setSectionResizeMode(0, QHeaderView::Stretch);
   browse->addWidget(list, 1);
-  status = new QLabel;
+  status = new DiagnosticLabel;
   status->setWordWrap(true);
   status->setObjectName("repositoryBrowserStatus");
   browse->addWidget(status);
@@ -113,7 +113,7 @@ RepoBrowser::RepoBrowser(GitHubClient *service, QWidget *parent)
           });
   connect(client, &GitHubClient::errorOccurred, this,
           [this](const QString &error) {
-            status->setText(error);
+            status->setError(error);
             more->setEnabled(page > 0);
           });
   QTimer::singleShot(0, this, &RepoBrowser::refresh);

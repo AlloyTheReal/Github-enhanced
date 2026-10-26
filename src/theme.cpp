@@ -80,6 +80,7 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
     p.setColor(QPalette::Mid, c("border")); p.setColor(QPalette::Dark, c("background"));
     p.setColor(QPalette::ButtonText, c("text")); p.setColor(QPalette::Highlight, c("accent"));
     p.setColor(QPalette::HighlightedText, Visuals::foreground(c("accent"))); p.setColor(QPalette::PlaceholderText, c("muted"));
+    p.setColor(QPalette::Link, c("accent")); p.setColor(QPalette::LinkVisited, c("accent"));
     p.setColor(QPalette::ToolTipBase, c("surface")); p.setColor(QPalette::ToolTipText, c("text"));
     p.setColor(QPalette::Disabled, QPalette::Text, c("muted"));
     p.setColor(QPalette::Disabled, QPalette::ButtonText, c("muted"));
@@ -124,8 +125,11 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QSpinBox::up-button, QSpinBox::down-button { width: 24px; border: 0; background: transparent; }
         QSpinBox::up-arrow, QSpinBox::down-arrow { width: 0; height: 0; image: none; }
         QSpinBox QLineEdit { border: 0; padding: 0; background: transparent; }
-        QComboBox QAbstractItemView { background: @background; color: @text; border: 1px solid @hairline; padding: 6px; selection-background-color: @card; selection-color: @text; outline: 0; }
-        QComboBox QAbstractItemView::item { min-height: 30px; padding: 4px 10px; }
+        QFrame#glassComboPopup { background: @background; border: 1px solid @hairline; border-radius: 12px; }
+        QComboBox QAbstractItemView { background: @background; color: @text; border: 1px solid @hairline; border-radius: 12px; padding: 6px; selection-background-color: @card; selection-color: @text; outline: 0; }
+        QComboBox QAbstractItemView::item { min-height: 28px; padding: 4px 12px; border-radius: 7px; }
+        QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover { background: @card; color: @text; }
+        QComboBox QAbstractItemView::item:disabled { color: @muted; background: transparent; }
         QPlainTextEdit#diffEditor { border: 0; border-radius: 0; padding: 14px 18px; background: @surface; }
         QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: @focus; }
         QPushButton, QToolButton { background: transparent; color: @text; border: 0; border-radius: 11px; padding: 8px 16px; min-height: 20px; }

@@ -680,3 +680,43 @@ bool systemReducesTransparency() {
     return false;
 }
 #endif
+
+GlassComboBox::GlassComboBox(QWidget *parent) : QComboBox(parent) {
+    auto *list = new QListView;
+    list->setObjectName("glassComboList");
+    list->setFrameShape(QFrame::NoFrame);
+    list->setUniformItemSizes(true);
+    list->setTextElideMode(Qt::ElideRight);
+    list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    setView(list);
+    setMaxVisibleItems(8);
+    setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    setMinimumContentsLength(12);
+    installCapsuleScrollBars(list);
+}
+void GlassComboBox::showPopup() {
+    QComboBox::showPopup();
+    auto *popup = view()->window();
+    if (!popup || popup == window() || !popup->isVisible()) return;
+    if (popup->objectName() != "glassComboPopup") {
+        popup->setObjectName("glassComboPopup"); popup->style()->unpolish(popup); popup->style()->polish(popup);
+    }
+    QPainterPath shape;
+    shape.addRoundedRect(QRectF(popup->rect()), 12, 12);
+    popup->setMask(QRegion(shape.toFillPolygon().toPolygon()));
+    if (popupAnimation) { popupAnimation->stop(); popupAnimation->deleteLater(); }
+    auto *fade = qobject_cast<QGraphicsOpacityEffect *>(view()->graphicsEffect());
+    if (!fade) { fade = new QGraphicsOpacityEffect(view()); view()->setGraphicsEffect(fade); }
+    if (Visuals::reducedMotion()) { fade->setOpacity(1); return; }
+    popupAnimation = new QPropertyAnimation(fade, "opacity", this);
+    popupAnimation->setDuration(120);
+    popupAnimation->setStartValue(.8); popupAnimation->setEndValue(1.);
+    popupAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    popupAnimation->start();
+}
+void GlassComboBox::hidePopup() {
+    if (popupAnimation) popupAnimation->stop();
+    if (auto *fade = qobject_cast<QGraphicsOpacityEffect *>(view()->graphicsEffect())) fade->setOpacity(1);
+    QComboBox::hidePopup();
+}

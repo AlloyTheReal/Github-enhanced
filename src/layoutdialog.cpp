@@ -110,7 +110,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     advancedLayout->setContentsMargins(0, 0, 0, 0);
     auto *form = new QFormLayout;
     advancedLayout->addLayout(form);
-    position = new QComboBox;
+    position = new GlassComboBox;
     position->setObjectName("panelPosition");
     position->addItem("À gauche", int(Qt::LeftDockWidgetArea));
     position->addItem("À droite", int(Qt::RightDockWidgetArea));
@@ -131,9 +131,9 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     form->addRow("Hauteur", panelHeight);
     auto *resize = new QPushButton("Appliquer les dimensions");
     advancedLayout->addWidget(resize);
-    relativeTo = new QComboBox;
+    relativeTo = new GlassComboBox;
     relativeTo->setObjectName("panelRelativeTo");
-    placement = new QComboBox;
+    placement = new GlassComboBox;
     placement->setObjectName("panelPlacement");
     placement->addItems({"À droite de", "En dessous de", "En onglet avec", "À gauche de", "Au-dessus de"});
     form = new QFormLayout;
@@ -207,14 +207,14 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     toolbarVisible->setChecked(window->mainToolbar->isVisible());
     toolLayout->addWidget(toolbarVisible);
     connect(toolbarVisible, &QCheckBox::toggled, window->mainToolbar, &QWidget::setVisible);
-    auto *toolbarPosition = new QComboBox;
+    auto *toolbarPosition = new GlassComboBox;
     toolbarPosition->addItem("En haut", int(Qt::TopToolBarArea));
     toolbarPosition->addItem("En bas", int(Qt::BottomToolBarArea));
     toolbarPosition->addItem("À gauche", int(Qt::LeftToolBarArea));
     toolbarPosition->addItem("À droite", int(Qt::RightToolBarArea));
     toolbarPosition->setCurrentIndex(
         toolbarPosition->findData(int(window->toolBarArea(window->mainToolbar))));
-    auto *toolbarStyle = new QComboBox;
+    auto *toolbarStyle = new GlassComboBox;
     toolbarStyle->addItem("Icônes et texte", int(Qt::ToolButtonTextBesideIcon));
     toolbarStyle->addItem("Icônes seulement", int(Qt::ToolButtonIconOnly));
     toolbarStyle->addItem("Texte seulement", int(Qt::ToolButtonTextOnly));

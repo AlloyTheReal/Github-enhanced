@@ -31,3 +31,11 @@ Les tests utilisent des dépôts Git temporaires et des services simulés : auth
 Sources : [GitHub CLI — connexion](https://cli.github.com/manual/gh_auth_login), [gestionnaire Git](https://cli.github.com/manual/gh_auth_setup-git), [OpenAI — app-server](https://learn.chatgpt.com/docs/app-server), [authentification Codex](https://learn.chatgpt.com/docs/auth).
 
 Le contexte comprend jusqu’à 24 Kio de statistiques et 96 Kio d’extraits. Aucun fichier complet de plusieurs centaines de Mio n’est envoyé à Codex. Référence du protocole : [OpenAI Docs — app-server](https://learn.chatgpt.com/docs/app-server).
+
+## Autoriser l’envoi des workflows GitHub Actions
+
+Les nouvelles connexions GitHub demandent aussi la permission OAuth `workflow`, nécessaire pour créer ou modifier les fichiers `.github/workflows/`. Une ancienne connexion peut encore disposer seulement des permissions `repo`, `read:org` et `gist` : GitHub refuse alors l’envoi des commits concernés, même si le transfert des objets Git s’est terminé.
+
+Après ce refus, cliquez sur **Autoriser workflow et réessayer** dans la fenêtre d’activité. Vous pouvez aussi ouvrir **Dépôt → Autoriser les workflows GitHub…**. L’application lance la commande officielle `gh auth refresh --hostname github.com --scopes workflow`, qui ajoute cette permission à la session existante. Validez le code et l’autorisation dans le navigateur, puis fermez le dialogue. L’action de récupération vérifie à nouveau la branche et les commits avant de réessayer l’envoi. Une annulation ou un échec de l’autorisation laisse les commits en attente.
+
+Cette autorisation ne nécessite pas de créer ou copier un jeton personnel dans l’application. Voir [GitHub CLI — renouveler les autorisations](https://cli.github.com/manual/gh_auth_refresh) et [GitHub — permissions OAuth](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).

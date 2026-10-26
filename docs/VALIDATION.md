@@ -52,3 +52,19 @@ Les écritures GitHub sont simulées dans les tests : aucun dépôt, release ou 
 ## Comptes, organisations et noms de dépôt
 
 Tests ajoutés : publication avec compte connecté et bouton de connexion masqué, sélecteur personnel/organisations, membres actifs et pagination des appartenances, organisation sans droit désactivée, droits des administrateurs, absence de bascule automatique vers Public, normalisation des espaces et espaces Unicode, requête vers `orgs/{organisation}/repos`, conservation de la visibilité choisie et absence de README lors de la publication d’un dépôt local. Les écritures restent simulées, sans création dans les organisations du compte utilisateur.
+
+## Permission OAuth workflow
+
+Les nouvelles connexions demandent `gist,workflow` en complément des permissions par défaut de GitHub CLI. Les tests vérifient la commande d’ajout de permission à une session existante (`auth refresh --hostname github.com --scopes workflow`), l’absence de jeton d’environnement transmis et le traitement d’un refus d’autorisation. Le dialogue distingue cette action de la connexion initiale.
+
+Un serveur Git local avec hook de réception reproduit le refus OAuth exact concernant `.github/workflows/build.yml`. Les tests de l’interface vérifient le bouton de récupération, l’envoi réussi après autorisation simulée et l’absence d’envoi après refus. Une nouvelle opération efface toute ancienne action de récupération. La reprise contrôle de nouveau la branche et HEAD, puis repasse par la vérification des objets à envoyer.
+
+Validation : compilation Release et trois suites CTest réussies, avec les tests LFS réels activés. Aucune permission d’un compte réel n’a été modifiée et aucun envoi vers GitHub n’a été effectué ; l’utilisateur doit terminer l’autorisation dans son navigateur.
+
+## Erreurs lisibles et mode avancé
+
+Vingt cas de diagnostic vérifiés : workflow OAuth, gros fichiers et quota LFS, DNS, TLS, branche désynchronisée, conflit, verrou, disque plein, identité manquante, dossier sans dépôt, connexion invalide, refus HTTPS 403, permissions GitHub, dépôt introuvable, nom déjà utilisé, règle de branche, limite de requêtes, contexte trop grand et délai dépassé. Un refus HTTPS n’est pas présenté comme une panne réseau. Les erreurs inconnues reçoivent une explication neutre ; les détails restent consultables.
+
+Tests supplémentaires : conservation du message d’origine, échappement du texte technique, contexte d’un brouillon de release déjà créé, journal masqué en mode simple, bascule entre les modes, préférence mémorisée, synchronisation du menu Affichage et de la fenêtre d’activité, et absence de réapparition d’une ancienne erreur après un nouveau statut.
+
+Les trois suites CTest passent, avec Git LFS réel activé. Captures contrôlées : `error-simple.png`, `error-advanced.png` et `organization-menu.png`. Les listes déroulantes utilisent un composant commun avec vue compacte, surlignage arrondi, défilement et animation respectant l’option de réduction des mouvements. Le rendu natif Windows/macOS reste à vérifier sur ces plateformes.

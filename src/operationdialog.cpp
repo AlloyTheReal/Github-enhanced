@@ -12,7 +12,9 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   titleLabel->setObjectName("pageTitle");
   titleLabel->setWordWrap(true);
   root->addWidget(titleLabel);
-  detail = new QLabel("Aucune opération en cours.");
+  detail = new QLabel;
+  detail->setTextFormat(Qt::PlainText);
+  detail->setText("Aucune opération en cours.");
   detail->setObjectName("operationDetail");
   detail->setWordWrap(true);
   root->addWidget(detail);
@@ -20,16 +22,40 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   progress->setObjectName("operationProgress");
   progress->setTextVisible(false);
   root->addWidget(progress);
+  advancedToggle = new QCheckBox("Mode avancé · détails techniques");
+  advancedToggle->setObjectName("operationAdvanced");
+  advancedToggle->setChecked(Diagnostics::advanced());
+  root->addWidget(advancedToggle);
+  connect(advancedToggle, &QCheckBox::toggled, &Diagnostics::instance(),
+          &Diagnostics::setAdvanced);
   details = new QPlainTextEdit;
   details->setObjectName("operationLog");
   details->setReadOnly(true);
   details->setMaximumBlockCount(300);
   root->addWidget(details, 1);
-  auto *hint =
+  details->setVisible(Diagnostics::advanced());
+  connect(&Diagnostics::instance(), &Diagnostics::advancedChanged, this,
+          [this](bool enabled) {
+            QSignalBlocker blocker(advancedToggle);
+            advancedToggle->setChecked(enabled);
+            details->setVisible(enabled);
+          });
+  hint =
       new QLabel("Vous pouvez masquer cette fenêtre ; l’opération continue.");
   hint->setObjectName("muted");
   hint->setWordWrap(true);
   root->addWidget(hint);
+  recoveryButton = new QPushButton;
+  recoveryButton->setObjectName("operationRecovery");
+  recoveryButton->hide();
+  root->addWidget(recoveryButton);
+  connect(recoveryButton, &QPushButton::clicked, this, [this] {
+    auto action = recovery;
+    recovery = {};
+    recoveryButton->hide();
+    if (action)
+      action();
+  });
   closeButton = new QPushButton("Masquer");
   root->addWidget(closeButton, 0, Qt::AlignRight);
   connect(closeButton, &QPushButton::clicked, this, &QWidget::hide);
@@ -42,12 +68,15 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   });
 }
 void OperationDialog::begin(const QString &title) {
+  recovery = {};
+  recoveryButton->hide();
   ++completionRevision;
   active = true;
   titleLabel->setText(title);
   details->clear();
   pending.clear();
   detail->setText("Préparation…");
+  hint->setText("Vous pouvez masquer cette fenêtre ; l’opération continue.");
   progress->setRange(0, 0);
   closeButton->setText("Masquer");
   reveal.start(450);
@@ -71,7 +100,8 @@ void OperationDialog::append(const QString &text) {
     if (match.hasMatch()) {
       progress->setRange(0, 100);
       progress->setValue(qBound(0, match.captured(1).toInt(), 100));
-      detail->setText(line.left(220));
+      if (active)
+        detail->setText("Transfert en cours · " + match.captured(1) + "%");
     }
   }
   if (pending.size() > 4000)
@@ -88,9 +118,17 @@ void OperationDialog::finish(bool success, const QString &message) {
   append(tail + '\n');
   progress->setRange(0, 100);
   progress->setValue(success ? 100 : 0);
-  detail->setText(message.isEmpty()
-                      ? (success ? "Terminé" : "L’opération a échoué.")
-                      : message);
+  if (success)
+    detail->setText(message.isEmpty() ? "Terminé" : message);
+  else {
+    detail->setText(Diagnostics::explain(
+                        message.isEmpty() ? "L’opération a échoué." : message)
+                        .text());
+    if (!message.isEmpty())
+      details->appendPlainText("\nÉchec de l’opération :\n" + message);
+  }
+  hint->setText(success ? "L’opération est terminée."
+                        : "Consultez l’explication avant de réessayer.");
   closeButton->setText("Fermer");
   if (!success) {
     show();
@@ -100,4 +138,11 @@ void OperationDialog::finish(bool success, const QString &message) {
       if (!active && revision == completionRevision)
         hide();
     });
+}
+
+void OperationDialog::setRecoveryAction(const QString &title,
+                                        std::function<void()> action) {
+  recovery = std::move(action);
+  recoveryButton->setText(title);
+  recoveryButton->setVisible(bool(recovery));
 }

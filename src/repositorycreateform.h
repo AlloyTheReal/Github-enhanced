@@ -1,4 +1,5 @@
 #pragma once
+#include "diagnostics.h"
 #include "githubclient.h"
 #include "visuals.h"
 #include <QSet>
@@ -30,7 +31,8 @@ private:
   QLineEdit *name, *description;
   QComboBox *visibility, *owner;
   QCheckBox *readme, *pushCommits;
-  QLabel *account, *status, *heading, *hint, *ownerHint;
+  QLabel *account, *heading, *hint, *ownerHint;
+  DiagnosticLabel *status;
   QPushButton *submit, *back, *login;
   QProgressBar *progress;
   bool working = false, authenticated = false, publishing = false;
