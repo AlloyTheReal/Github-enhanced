@@ -8,3 +8,4 @@ Icon=io.githubenhanced.desktop
 Terminal=false
 Categories=Development;RevisionControl;
 StartupNotify=true
+StartupWMClass=github-enhanced

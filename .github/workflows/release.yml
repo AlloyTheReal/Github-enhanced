@@ -3,24 +3,14 @@ on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Build and package"]
-    types: [completed]
-    branches: [main]
 permissions:
   contents: read
 jobs:
   build:
-    if: github.event_name != 'workflow_run'
     uses: ./.github/workflows/build.yml
   publish:
     needs: build
-    if: >-
-      always() &&
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        github.event.workflow_run.event == 'push') ||
-       (needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v')))
+    if: needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -28,39 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - name: Check release request
-        id: request
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = workflow_run ]; then
-            # One-time publication requested for 0.2.2, after all builds pass.
-            grep -q 'set(GHE_VERSION "0.2.2"' CMakeLists.txt || exit 0
-            if gh release view v0.2.2 --json isDraft --jq .isDraft 2>/dev/null | grep -qx false; then
-              exit 0
-            fi
-          fi
-          echo "publish=true" >> "$GITHUB_OUTPUT"
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@v4
-        if: steps.request.outputs.publish == 'true'
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id || github.run_id }}
+          run-id: ${{ github.run_id }}
           pattern: "{linux-x86_64,windows-x86_64,macos-universal}"
           path: dist
           merge-multiple: true
       - name: Publish verified build artifacts
-        if: steps.request.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_run' && 'v0.2.2' || github.ref_name }}
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail

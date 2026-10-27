@@ -1,15 +1,12 @@
-# GitHub Enhanced 0.2.2
+# GitHub Enhanced 2.2.1
 
-- **Linux : fonctionnel.** Les builds, tests et paquets Linux sont validés par la CI.
-- **Windows : bêta test.** Les installateurs EXE et MSI sont destinés aux tests et aux retours utilisateurs.
-- **macOS : bêta test.** Le DMG universel Intel / Apple Silicon est destiné aux tests et aux retours utilisateurs.
+## Correctif du logo
 
-## Correctifs
+- Associe la fenêtre à son lanceur Linux pour afficher le logo dans le bureau et la barre des tâches.
+- Ajoute le logo PNG aux paquets Linux, en complément de l’icône SVG.
+- Renseigne la classe de fenêtre du lanceur Linux.
 
-- Évite un blocage lorsque le lancement d’une commande échoue immédiatement, notamment sous Windows.
-- Rend les sorties des tests Windows visibles et conserve les rapports de tests sur les trois systèmes.
-- Réessaie la création du DMG en cas de verrouillage temporaire du système et corrige sa collecte dans les artefacts.
+Le système de mise à jour est inchangé.
 
-Les validations automatiques ne remplacent pas les essais des installateurs sur des machines réelles. Les installateurs Windows et macOS ne sont pas signés.
-
+Windows et macOS restent en bêta test. Les installateurs Windows et macOS ne sont pas signés.
 Les sommes de contrôle des fichiers distribués figurent dans `SHA256SUMS`.
