@@ -17,11 +17,19 @@ jobs:
       - run: cmake --preset release
       - run: cmake --build --preset release --parallel 2
       - run: ctest --preset release --output-junit test-results.xml
+      - name: Qt test details
+        if: always()
+        shell: bash
+        run: |
+          for report in build/release/qt-*-results.txt; do
+            [ ! -f "$report" ] || cat "$report"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-reports-${{ runner.os }}
           path: |
+            build/release/qt-*-results.txt
             build/release/test-results.xml
             build/release/Testing/Temporary/LastTest.log
       - name: Application startup
@@ -58,11 +66,19 @@ jobs:
       - run: cmake --preset release
       - run: cmake --build --preset release --parallel 2
       - run: ctest --preset release --output-junit test-results.xml
+      - name: Qt test details
+        if: always()
+        shell: bash
+        run: |
+          for report in build/release/qt-*-results.txt; do
+            [ ! -f "$report" ] || cat "$report"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-reports-${{ runner.os }}
           path: |
+            build/release/qt-*-results.txt
             build/release/test-results.xml
             build/release/Testing/Temporary/LastTest.log
       - name: Application startup
@@ -91,11 +107,19 @@ jobs:
         run: cmake --preset release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
       - run: cmake --build --preset release --parallel 2
       - run: ctest --preset release --output-junit test-results.xml
+      - name: Qt test details
+        if: always()
+        shell: bash
+        run: |
+          for report in build/release/qt-*-results.txt; do
+            [ ! -f "$report" ] || cat "$report"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-reports-${{ runner.os }}
           path: |
+            build/release/qt-*-results.txt
             build/release/test-results.xml
             build/release/Testing/Temporary/LastTest.log
       - run: build/release/github-enhanced.app/Contents/MacOS/github-enhanced --smoke-test
