@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "ocean",
+  "name": "Oc\u00e9an",
+  "author": "GitHub Enhanced",
+  "background": "#171e27",
+  "surface": "#202a35",
+  "text": "#edf3fa",
+  "muted": "#91a1b6",
+  "accent": "#98bee7",
+  "border": "#344252",
+  "added": "#76ad8b",
+  "removed": "#d58d8d"
+}

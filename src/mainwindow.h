@@ -27,17 +27,26 @@ class QToolButton;
 class QToolBar;
 class LayoutDialog;
 class QPushButton;
+class CustomPanel;
+class AppUpdater;
+class UpdateDialog;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow();
     void openRepository(const QString &path);
+    void checkUpdates(bool manual=true);
 protected:
     void closeEvent(QCloseEvent *event) override;
 private:
     friend class LayoutDialog;
     QSettings settings;
+    AppUpdater *updater;
+    QPointer<UpdateDialog> updateDialog;
+    void installUpdate(const QString &file);
+    QList<CustomPanel *> customPanels;
+    void restoreCustomPanels(const QJsonArray &definitions);
     CommandRunner runner;
     CommandRunner diffRunner;
     GitHubClient github;
@@ -116,6 +125,8 @@ private:
     void updateSyncStatus(const RepositorySyncState &state);
     void performSyncAction();
     void showSyncDetails();
+    void mergeBranches();
+    QAction *syncToolbarAction=nullptr;
     void showDiff();
     void showText(const QString &text);
     void runGit(const QStringList &args, CommandRunner::Callback callback);
@@ -140,6 +151,7 @@ private:
     void initRepository();
     void newBranch();
     void settingsDialog();
+    void openSettings(bool colors);
     void rebuildLayouts();
     void editLayout();
     void setLayoutEditing(bool editing);

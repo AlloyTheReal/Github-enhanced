@@ -1,4 +1,8 @@
 #include "accountdialog.h"
+#include "appupdater.h"
+#include "mergedialog.h"
+#include "custompanel.h"
+#include <QtNetwork>
 #include "codexclient.h"
 #include "githubclient.h"
 #include "reposettings.h"
@@ -50,6 +54,22 @@ static QList<QJsonObject> records(const QString &path) {
     return result;
 }
 
+class MemoryUpdateReply : public QNetworkReply {
+    QByteArray bytes; qint64 offset=0;
+public:
+    MemoryUpdateReply(const QNetworkRequest &request,const QByteArray &data,QObject *parent):QNetworkReply(parent),bytes(data){setRequest(request);setUrl(request.url());setAttribute(QNetworkRequest::HttpStatusCodeAttribute,200);open(QIODevice::ReadOnly|QIODevice::Unbuffered);QTimer::singleShot(0,this,[this]{emit readyRead();setFinished(true);emit finished();});}
+    void abort()override{setError(QNetworkReply::OperationCanceledError,"cancelled");}
+    qint64 bytesAvailable()const override{return bytes.size()-offset+QNetworkReply::bytesAvailable();}
+protected:
+    qint64 readData(char *data,qint64 size)override{const auto count=qMin(size,qint64(bytes.size())-offset);if(count<=0)return -1;memcpy(data,bytes.constData()+offset,count);offset+=count;return count;}
+};
+class UpdateTransport : public QNetworkAccessManager {
+public:
+    QByteArray release,binary="verified update fixture";
+protected:
+    QNetworkReply *createRequest(Operation,const QNetworkRequest &request,QIODevice *)override{return new MemoryUpdateReply(request,request.url().path().endsWith("/releases/latest")?release:binary,this);}
+};
+
 class IntegrationTests : public QObject {
     Q_OBJECT
   private slots:
@@ -96,7 +116,8 @@ class IntegrationTests : public QObject {
         inspect(true);QTRY_VERIFY(!updates.isEmpty());state=qvariant_cast<RepositorySyncState>(updates.last()[0]);QCOMPARE(state.kind,"behind");QCOMPARE(state.behind,1);
         QVERIFY(QDir().rename(remote,remote+".offline"));inspect(true);QTRY_VERIFY(!updates.isEmpty());state=qvariant_cast<RepositorySyncState>(updates.last()[0]);QVERIFY(!state.error.isEmpty());
         inspect(false);QTRY_VERIFY(!updates.isEmpty());QVERIFY(!qvariant_cast<RepositorySyncState>(updates.last()[0]).error.isEmpty());QVERIFY(QDir().rename(remote+".offline",remote));
-        QVERIFY(git(local,{"branch","--unset-upstream"}).ok());inspect(true);QTRY_VERIFY(!updates.isEmpty());state=qvariant_cast<RepositorySyncState>(updates.last()[0]);QCOMPARE(state.kind,"noUpstream");QVERIFY(state.error.isEmpty());
+        QVERIFY(git(local,{"branch","--unset-upstream"}).ok());inspect(true);QTRY_VERIFY(!updates.isEmpty());state=qvariant_cast<RepositorySyncState>(updates.last()[0]);QCOMPARE(state.kind,"behind");QCOMPARE(state.upstream,"origin/main");QVERIFY(state.error.isEmpty());
+        QVERIFY(git(local,{"switch","-c","unpublished"}).ok());inspect(true);QTRY_VERIFY(!updates.isEmpty());QCOMPARE(qvariant_cast<RepositorySyncState>(updates.last()[0]).kind,"noUpstream");
         QVERIFY(git(local,{"remote","remove","origin"}).ok());inspect(false);QTRY_VERIFY(!updates.isEmpty());QCOMPARE(qvariant_cast<RepositorySyncState>(updates.last()[0]).kind,"localOnly");
         QVERIFY(git(local,{"switch","--detach"}).ok());inspect(false);QTRY_VERIFY(!updates.isEmpty());QCOMPARE(qvariant_cast<RepositorySyncState>(updates.last()[0]).kind,"detached");
     }
@@ -115,6 +136,52 @@ class IntegrationTests : public QObject {
         bool found=false;for(const auto &r:records(data.path()+"/protocol.jsonl"))if(r["method"]=="turn/start"){
             const auto input=r["params"].toObject()["input"].toArray()[0].toObject()["text"].toString();QVERIFY(input.contains("Contexte abrégé"));QVERIFY(input.toUtf8().size()<140000);found=true;
         }QVERIFY(found);
+    }
+    void customPanelTypesValidateAndSerialize(){
+        const QJsonObject spec{{"id","custom-tasks"},{"title","À faire"},{"type","checklist"}};QVERIFY(CustomPanel::validate(QJsonArray{spec}));auto bad=spec;bad["type"]="shell";QVERIFY(!CustomPanel::validate(QJsonArray{bad}));QVERIFY(!CustomPanel::validate(QJsonArray{spec,spec}));
+        CustomPanel panel(spec);panel.show();auto *input=panel.findChild<QLineEdit *>("customPanelTaskInput");input->setText("Relire le diff");QTest::keyClick(input,Qt::Key_Return);auto *tasks=panel.findChild<QListWidget *>("customPanelTasks");QCOMPARE(tasks->count(),1);tasks->item(0)->setCheckState(Qt::Checked);auto saved=panel.definition();QVERIFY(saved["tasks"].toArray()[0].toObject()["done"].toBool());CustomPanel restored(saved);QCOMPARE(restored.findChild<QListWidget *>("customPanelTasks")->item(0)->text(),"Relire le diff");
+        auto info=spec;info["id"]="custom-repository";info["type"]="repository";CustomPanel repository(info);RepositorySyncState state;state.branch="main";state.repository="/test/project";state.upstream="upstream/main";state.ahead=2;repository.updateRepository(state);bool displayed=false;for(auto *label:repository.findChildren<QLabel *>())displayed|=label->text().contains("upstream/main")&&label->text().contains("2 commit");QVERIFY(displayed);
+    }
+    void updateSelectionAndAtomicInstall(){
+        const QString repo="AlloyTheReal/Github-enhanced";
+        QByteArray image("\x7f" "ELF0000AI\x02payload",18);const auto hash=QString::fromLatin1(QCryptographicHash::hash(image,QCryptographicHash::Sha256).toHex());
+        auto release=QJsonObject{{"tag_name","v1.2.0"},{"html_url","https://github.com/"+repo+"/releases/tag/v1.2.0"},{"assets",QJsonArray{QJsonObject{{"name","GitHub-Enhanced-x86_64.AppImage"},{"browser_download_url","https://github.com/"+repo+"/releases/download/v1.2.0/GitHub-Enhanced-x86_64.AppImage"},{"size",image.size()},{"digest","sha256:"+hash}}}}};
+        QVERIFY(AppUpdater::newer("v1.10.0","1.9.9"));QVERIFY(!AppUpdater::newer("v1.2.0-beta","1.0.0"));QVERIFY(!AppUpdater::newer("1.0.0","1.0.0"));
+        auto selected=AppUpdater::select(release,"1.0.0","linux","x86_64",repo);QVERIFY(selected.available());QCOMPARE(selected.sha256,hash);QVERIFY(!selected.assetUrl.isEmpty());
+        auto wrong=AppUpdater::select(release,"1.0.0","linux","arm64",repo);QVERIFY(wrong.available());QVERIFY(wrong.assetUrl.isEmpty());
+        auto bad=release;bad["html_url"]="https://evil.invalid/releases/tag/1.2.0";QString error;QVERIFY(!AppUpdater::select(bad,"1.0.0","linux","x86_64",repo,&error).available());QVERIFY(!error.isEmpty());
+        auto assets=release["assets"].toArray();auto asset=assets[0].toObject();asset["digest"]="sha256:broken";assets[0]=asset;bad=release;bad["assets"]=assets;QVERIFY(AppUpdater::select(bad,"1.0.0","linux","x86_64",repo).assetUrl.isEmpty());
+        QTemporaryDir files;const auto target=files.filePath("GitHub-Enhanced.AppImage"),source=files.filePath("new.AppImage");auto write=[](const QString &path,const QByteArray &bytes){QFile f(path);return f.open(QIODevice::WriteOnly)&&f.write(bytes)==bytes.size();};
+        QVERIFY(write(target,"old executable"));QVERIFY(write(source,image));QVERIFY2(AppUpdater::replaceAppImage(target,source,hash,&error),qPrintable(error));QFile current(target),backup(target+".previous");QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(backup.open(QIODevice::ReadOnly));QCOMPARE(backup.readAll(),QByteArray("old executable"));backup.close();
+        QVERIFY(write(source,image+"tampered"));QVERIFY(!AppUpdater::replaceAppImage(target,source,hash,&error));QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(!AppUpdater::replaceAppImage(files.filePath("package.deb"),source,hash,&error));
+    }
+    void updateDownloadVerification_data(){QTest::addColumn<bool>("corrupt");QTest::newRow("verified")<<false;QTest::newRow("corrupt-rejected")<<true;}
+    void updateDownloadVerification(){
+        QFETCH(bool,corrupt);QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());QCoreApplication::setApplicationVersion("0.1.0");
+        UpdateTransport transport;const auto hash=QString::fromLatin1(QCryptographicHash::hash(transport.binary,QCryptographicHash::Sha256).toHex());const auto repo=AppUpdater::repository();
+        transport.release=QJsonDocument(QJsonObject{{"tag_name","v9.0.0"},{"html_url","https://github.com/"+repo+"/releases/tag/v9.0.0"},{"assets",QJsonArray{QJsonObject{{"name","GitHub-Enhanced-universal.AppImage"},{"browser_download_url","https://github.com/"+repo+"/releases/download/v9.0.0/GitHub-Enhanced-universal.AppImage"},{"size",transport.binary.size()},{"digest","sha256:"+hash}}}}}).toJson();
+#ifdef Q_OS_LINUX
+        AppUpdater service(nullptr,&transport);QSignalSpy checked(&service,&AppUpdater::checked),download(&service,&AppUpdater::downloadFinished);service.check(true);QTRY_COMPARE(checked.size(),1);QVERIFY(service.available().available());
+        if(corrupt)transport.binary[0]='!';service.download();QTRY_COMPARE(download.size(),1);const auto file=download[0][0].toString();const auto error=download[0][1].toString();
+        if(corrupt){QVERIFY(file.isEmpty());QVERIFY(!error.isEmpty());}else{QVERIFY(error.isEmpty());QFile saved(file);QVERIFY(saved.open(QIODevice::ReadOnly));QCOMPARE(saved.readAll(),transport.binary);saved.close();QVERIFY(saved.remove());}
+#else
+        QSKIP("Le téléchargement de test utilise un asset AppImage ; sélection des assets testée séparément.");
+#endif
+    }
+    void mergeBranchesAndResolve_data(){QTest::addColumn<QString>("scenario");for(const auto *name:{"clean","dirty","ours","theirs","abort"})QTest::newRow(name)<<QString(name);}
+    void mergeBranchesAndResolve(){
+        QFETCH(QString,scenario);QTemporaryDir repo;auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repo.path());p.start("git",args);p.waitForFinished(10000);return CommandResult{p.exitCode(),p.readAllStandardOutput(),p.readAllStandardError()};};auto write=[&](const QString &name,const QByteArray &bytes){QFile f(repo.filePath(name));return f.open(QIODevice::WriteOnly)&&f.write(bytes)==bytes.size();};
+        QVERIFY(git({"init","--initial-branch=main"}).ok());QVERIFY(git({"config","user.name","Merge Test"}).ok());QVERIFY(git({"config","user.email","merge@example.invalid"}).ok());QVERIFY(git({"config","commit.gpgsign","false"}).ok());QVERIFY(write("sample.txt","base\n"));QVERIFY(git({"add","--all"}).ok());QVERIFY(git({"commit","-m","base"}).ok());QVERIFY(git({"switch","-c","topic"}).ok());QVERIFY(write("sample.txt","incoming\n"));QVERIFY(git({"commit","-am","incoming"}).ok());const auto topic=git({"rev-parse","HEAD"}).output.trimmed();QVERIFY(git({"switch","main"}).ok());
+        if(scenario=="clean"){QVERIFY(write("other.txt","local\n"));QVERIFY(git({"add","--all"}).ok());QVERIFY(git({"commit","-m","local"}).ok());}else{QVERIFY(write("sample.txt","local\n"));QVERIFY(git({"commit","-am","local"}).ok());}const auto before=git({"rev-parse","HEAD"}).output.trimmed();
+        if(scenario=="dirty")QVERIFY(write("untracked.txt","preserve\n"));
+        MergeDialog dialog(repo.path(),"topic");dialog.show();auto *start=dialog.findChild<QPushButton *>("startMerge");auto *status=dialog.findChild<QLabel *>("mergeStatus");QTRY_VERIFY(start->isEnabled());start->click();
+        if(scenario=="dirty"){QTRY_VERIFY(status->text().contains("modifications locales",Qt::CaseInsensitive));QCOMPARE(git({"rev-parse","HEAD"}).output.trimmed(),before);QVERIFY(!git({"rev-parse","--verify","MERGE_HEAD"}).ok());dialog.reject();return;}
+        auto *finish=dialog.findChild<QPushButton *>("finishMerge");auto *files=dialog.findChild<QListWidget *>("mergeConflicts");
+        if(scenario=="clean"){QTRY_VERIFY(git({"rev-parse","HEAD"}).output.trimmed()!=before);QVERIFY(git({"merge-base","--is-ancestor",QString::fromLatin1(topic),"HEAD"}).ok());QVERIFY(git({"merge-base","--is-ancestor",QString::fromLatin1(before),"HEAD"}).ok());QTRY_VERIFY(start->isEnabled());dialog.reject();return;}
+        QTRY_COMPARE(files->count(),1);QCOMPARE(files->item(0)->text(),"sample.txt");QVERIFY(!finish->isEnabled());
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))dialog.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/merge-conflicts.png");
+        if(scenario=="abort"){auto *abort=dialog.findChild<QPushButton *>("abortMerge");QTRY_VERIFY(abort->isEnabled());abort->click();QTRY_VERIFY(!git({"rev-parse","--verify","MERGE_HEAD"}).ok());QCOMPARE(git({"rev-parse","HEAD"}).output.trimmed(),before);QCOMPARE(git({"show","HEAD:sample.txt"}).output,QByteArray("local\n"));QTRY_VERIFY(start->isEnabled());dialog.reject();return;}
+        auto *choose=dialog.findChild<QPushButton *>(scenario=="ours"?"mergeOurs":"mergeTheirs");QTRY_VERIFY(choose->isEnabled());choose->click();QTRY_COMPARE(files->count(),0);QTRY_VERIFY(finish->isEnabled());finish->click();QTRY_VERIFY(!git({"rev-parse","--verify","MERGE_HEAD"}).ok());QCOMPARE(git({"show","HEAD:sample.txt"}).output,scenario=="ours"?QByteArray("local\n"):QByteArray("incoming\n"));QVERIFY(git({"merge-base","--is-ancestor",QString::fromLatin1(topic),"HEAD"}).ok());QTRY_VERIFY(start->isEnabled());dialog.reject();
     }
     void readableErrors_data() {
         QTest::addColumn<QString>("raw"); QTest::addColumn<QString>("expected");

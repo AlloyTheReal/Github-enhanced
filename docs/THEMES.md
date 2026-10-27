@@ -26,3 +26,9 @@ Pour partager une collection, hébergez un tableau JSON de ces objets sur une UR
 La disposition courante et le thème peuvent être envoyés manuellement sur le compte GitHub vérifié dans l’onglet **Compte GitHub**. Prérequis : GitHub CLI récent, authentifié sur github.com et autorisé à lire/écrire les Gists (`gh auth login --scopes gist` ; pour une session existante : `gh auth refresh --hostname github.com --scopes gist`). Le profil est placé dans `github-enhanced.json` dans un Gist secret nommé par description `GitHub Enhanced preferences v1`.
 
 Un Gist secret est non répertorié, accessible à quiconque possède son URL. La disposition inclut le placement des panneaux ; les positions de panneaux flottants peuvent devoir être réinitialisées sur un autre écran ou OS. Le compte vérifié s’applique à la session de préférences ; les réglages locaux restent ceux du profil système courant.
+
+## Palettes de départ
+
+Les palettes Graphite, Papier et Océan complètent les quatre thèmes existants. Dans **Préférences → Couleurs → Palettes de départ**, une sélection remplit tous les rôles de couleur. Elle devient une variante locale que vous pouvez modifier couleur par couleur. L’aperçu en direct et l’annulation restent disponibles. Les palettes ne contiennent aucun code à exécuter.
+
+Accès rapide aux couleurs : bouton **Couleurs…** dans la barre de menus ou d’état, ou **Fichier → Couleurs et palettes…**. Le parcours **Fichier → Préférences… → Couleurs** reste disponible.

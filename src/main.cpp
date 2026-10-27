@@ -1,15 +1,21 @@
 #include "mainwindow.h"
+#include "appversion.h"
 #include "visuals.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QTimer>
 #include <QAction>
+#include <QIcon>
+#include <QSettings>
 
 int main(int argc, char *argv[]) {
+#ifndef Q_OS_MACOS
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+#endif
     QApplication app(argc, argv);
     Visuals::install();
     app.setOrganizationName("GitHubEnhanced"); app.setOrganizationDomain("githubenhanced.io");
-    app.setApplicationName("GitHub Enhanced"); app.setApplicationVersion("0.1.0");
+    app.setApplicationName("GitHub Enhanced"); app.setApplicationVersion(GHE_APP_VERSION);
     QCommandLineParser parser; parser.setApplicationDescription("Client Git natif et personnalisable");
     parser.addHelpOption(); parser.addVersionOption();
     parser.addPositionalArgument("repository", "Dépôt local à ouvrir", "[repository]");
@@ -18,6 +24,7 @@ int main(int argc, char *argv[]) {
     parser.addOption({"layout-editor", "Ouvrir l’éditeur de disposition au démarrage."});
     parser.addOption({"preferences", "Ouvrir les réglages au démarrage."});
     parser.process(app);
+    app.setWindowIcon(QIcon(":/packaging/icons/github-enhanced.png"));
     MainWindow window; window.show();
     if (parser.isSet("layout-editor")) QTimer::singleShot(180, &window, [&window] {
         if (auto *action = window.findChild<QAction *>("tool-layout")) action->trigger();
@@ -27,6 +34,7 @@ int main(int argc, char *argv[]) {
     });
     if (!parser.positionalArguments().isEmpty()) QTimer::singleShot(0, &window, [&] { window.openRepository(parser.positionalArguments().first()); });
     if (parser.isSet("screenshot")) QTimer::singleShot(1500, &window, [&] { window.grab().save(parser.value("screenshot")); });
+    if(!parser.isSet("smoke-test") && QSettings().value("updates/checkAtLaunch",true).toBool())QTimer::singleShot(1500,&window,[&window]{window.checkUpdates(false);});
     if (parser.isSet("smoke-test")) QTimer::singleShot(2000, &app, &QCoreApplication::quit);
     return app.exec();
 }

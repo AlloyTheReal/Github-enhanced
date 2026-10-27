@@ -278,6 +278,10 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     auto *colorRows = new QVBoxLayout;
     colorRows->setSpacing(7);
     colorBody->addLayout(colorRows, 1);
+    auto *palettePreset=new GlassComboBox;palettePreset->setObjectName("palettePreset");palettePreset->addItem("Choisir une palette…",QJsonObject{});
+    for(const auto &palette:Theme::installed())palettePreset->addItem(palette["name"].toString(),palette);
+    auto *paletteCard=new QFrame;paletteCard->setObjectName("settingsCard");auto *paletteLayout=new QVBoxLayout(paletteCard);paletteLayout->setContentsMargins(14,10,14,12);paletteLayout->setSpacing(6);paletteLayout->addWidget(caption("Palette de départ","rowTitle"));paletteLayout->addWidget(palettePreset);colorRows->addWidget(paletteCard);
+    connect(palettePreset,&QComboBox::activated,this,[this,palettePreset](int index){auto colors=palettePreset->itemData(index).toJsonObject();if(colors.isEmpty())return;makeLocalTheme();for(const auto &key:{"background","surface","text","muted","accent","border","added","removed"})draft[key]=colors[key];refreshColors();});
     themeName = new QLineEdit(draft["name"].toString());
     themeName->setObjectName("themeName");
     themeName->setMaximumWidth(185);
@@ -435,7 +439,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     });
     auto *upload = new QPushButton("Envoyer");
     layout->addWidget(settingRow("Sauvegarder mes préférences",
-                                 "Le thème et la disposition sont enregistrés dans un Gist secret.", upload));
+                                 "Le thème, la disposition et le contenu des panneaux personnalisés sont enregistrés dans un Gist secret.", upload));
     connect(upload, &QPushButton::clicked, this, [this] { sync(true); });
     auto *download = new QPushButton("Restaurer");
     layout->addWidget(settingRow("Retrouver mes préférences", {}, download));

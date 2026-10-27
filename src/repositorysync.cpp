@@ -20,45 +20,46 @@ void RepositorySync::inspect(const QString &repository, bool fetch) {
   state = {};
   state.repository = repository;
   emit busyChanged(true);
-  runner.run("git", {"symbolic-ref", "--quiet", "--short", "HEAD"}, repository,
-             [this, fetch](const CommandResult &r) {
-               if (!r.ok()) {
-                 state.kind = "detached";
-                 finish();
-                 return;
-               }
-               state.branch = QString::fromUtf8(r.output).trimmed();
-               runner.run(
-                   "git", {"rev-parse", "--verify", "HEAD"}, state.repository,
-                   [this, fetch](const CommandResult &head) {
-                     if (!head.ok()) {
-                       state.kind = "unborn";
-                       finish();
-                       return;
-                     }
-                     state.head = QString::fromUtf8(head.output).trimmed();
-                     runner.run(
-                         "git",
-                         {"for-each-ref",
-                          "--format=%(upstream:short)%00%(upstream:remotename)%"
-                          "00%(upstream:remoteref)",
-                          "refs/heads/" + state.branch},
-                         state.repository,
-                         [this, fetch](const CommandResult &refs) {
-                           if (!refs.ok()) {
-                             state.error =
-                                 "Lecture de la branche distante impossible.";
-                             finish();
-                             return;
-                           }
-                           auto fields = refs.output.trimmed().split('\0');
-                           state.upstream = QString::fromUtf8(fields.value(0));
-                           state.remote = QString::fromUtf8(fields.value(1));
-                           state.remoteRef = QString::fromUtf8(fields.value(2));
-                           findRemote(fetch);
-                         });
-                   });
-             });
+  runner.run(
+      "git", {"symbolic-ref", "--quiet", "--short", "HEAD"}, repository,
+      [this, fetch](const CommandResult &r) {
+        if (!r.ok()) {
+          state.kind = "detached";
+          finish();
+          return;
+        }
+        state.branch = QString::fromUtf8(r.output).trimmed();
+        runner.run(
+            "git", {"rev-parse", "--verify", "HEAD"}, state.repository,
+            [this, fetch](const CommandResult &head) {
+              if (!head.ok()) {
+                state.kind = "unborn";
+                finish();
+                return;
+              }
+              state.head = QString::fromUtf8(head.output).trimmed();
+              runner.run(
+                  "git",
+                  {"for-each-ref",
+                   "--format=%(upstream:short)%00%(upstream:remotename)%"
+                   "00%(upstream:remoteref)%00%(upstream)",
+                   "refs/heads/" + state.branch},
+                  state.repository, [this, fetch](const CommandResult &refs) {
+                    if (!refs.ok()) {
+                      state.error =
+                          "Lecture de la branche distante impossible.";
+                      finish();
+                      return;
+                    }
+                    auto fields = refs.output.trimmed().split('\0');
+                    state.upstream = QString::fromUtf8(fields.value(0));
+                    state.remote = QString::fromUtf8(fields.value(1));
+                    state.remoteRef = QString::fromUtf8(fields.value(2));
+                    state.upstreamRef = QString::fromUtf8(fields.value(3));
+                    findRemote(fetch);
+                  });
+            });
+      });
 }
 void RepositorySync::findRemote(bool fetch) {
   runner.run(
@@ -106,39 +107,54 @@ void RepositorySync::findRemote(bool fetch) {
             });
       });
 }
-void RepositorySync::compare() {
+void RepositorySync::compare(bool infer) {
+  if (infer && state.upstream.isEmpty() && !state.remote.isEmpty()) {
+    const auto ref = "refs/remotes/" + state.remote + "/" + state.branch;
+    runner.run("git", {"show-ref", "--verify", "--quiet", ref},
+               state.repository, [this, ref](const CommandResult &r) {
+                 if (r.ok()) {
+                   state.upstream = state.remote + "/" + state.branch;
+                   state.upstreamRef = ref;
+                   state.remoteRef = "refs/heads/" + state.branch;
+                 }
+                 compare(false);
+               });
+    return;
+  }
   if (state.upstream.isEmpty()) {
     state.kind = "noUpstream";
     finish();
     return;
   }
-  runner.run(
-      "git",
-      {"rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"},
-      state.repository, [this](const CommandResult &r) {
-        if (!r.ok()) {
-          state.kind = "missingUpstream";
-          if (state.error.isEmpty())
-            state.error = "La branche distante suivie n’existe plus ou n’a pas "
-                          "encore été récupérée.";
-          finish();
-          return;
-        }
-        auto values = QString::fromUtf8(r.output).simplified().split(' ');
-        bool a = false, b = false;
-        state.ahead = values.value(0).toInt(&a);
-        state.behind = values.value(1).toInt(&b);
-        if (!a || !b) {
-          state.error = "Comparaison des commits impossible.";
-          finish();
-          return;
-        }
-        state.kind = state.ahead && state.behind ? "diverged"
-                     : state.ahead               ? "ahead"
-                     : state.behind              ? "behind"
-                                                 : "synced";
-        finish();
-      });
+  runner.run("git",
+             {"rev-list", "--left-right", "--count",
+              "HEAD..." + state.upstreamRef, "--"},
+             state.repository, [this](const CommandResult &r) {
+               if (!r.ok()) {
+                 state.kind = "missingUpstream";
+                 if (state.error.isEmpty())
+                   state.error =
+                       "La branche distante suivie n’existe plus ou n’a pas "
+                       "encore été récupérée.";
+                 finish();
+                 return;
+               }
+               auto values =
+                   QString::fromUtf8(r.output).simplified().split(' ');
+               bool a = false, b = false;
+               state.ahead = values.value(0).toInt(&a);
+               state.behind = values.value(1).toInt(&b);
+               if (!a || !b) {
+                 state.error = "Comparaison des commits impossible.";
+                 finish();
+                 return;
+               }
+               state.kind = state.ahead && state.behind ? "diverged"
+                            : state.ahead               ? "ahead"
+                            : state.behind              ? "behind"
+                                                        : "synced";
+               finish();
+             });
 }
 void RepositorySync::finish() {
   active = false;

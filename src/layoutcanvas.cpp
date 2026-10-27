@@ -320,3 +320,5 @@ void PanelList::startDrag(Qt::DropActions) {
     drag->setMimeData(mime);
     drag->exec(Qt::MoveAction);
 }
+
+void LayoutCanvas::setPanels(const QList<QDockWidget *> &items){panels=items;selected=nullptr;dragged=nullptr;splitter=-1;handles.clear();update();}

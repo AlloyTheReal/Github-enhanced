@@ -1,4 +1,5 @@
 #include "layoutdialog.h"
+#include "custompanel.h"
 #include "mainwindow.h"
 #include "layoutcanvas.h"
 #include <QtWidgets>
@@ -88,6 +89,11 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     panels->setObjectName("layoutPanels");
     panels->setMaximumHeight(180);
     panelLayout->addWidget(panels);
+    auto *customActions=new QHBoxLayout;
+    auto *addPanel=addButton(customActions,"Créer…",this,[this]{auto definition=CustomPanel::edit(this);if(definition.isEmpty())return;auto config=window->layoutConfiguration();auto custom=config["customPanels"].toArray();if(custom.size()>=16)return;remember();custom.append(definition);auto state=window->saveState(2);window->restoreCustomPanels(custom);window->restoreState(state,2);window->setLayoutEditing(true);refreshPanelList();for(int i=0;i<panels->count();++i)if(panels->item(i)->data(Qt::UserRole).toString()==definition["id"].toString())panels->setCurrentRow(i);if(auto *panel=window->findChild<QDockWidget *>(definition["id"].toString())){panel->show();panel->raise();window->resizeDocks({panel},{280},Qt::Horizontal);}preview->update();});addPanel->setObjectName("addCustomPanel");
+    addButton(customActions,"Modifier…",this,[this]{auto *panel=qobject_cast<CustomPanel *>(selectedPanel());if(!panel)return;auto definition=CustomPanel::edit(this,panel->definition());if(definition.isEmpty())return;remember();auto config=window->layoutConfiguration();auto custom=config["customPanels"].toArray();for(int i=0;i<custom.size();++i)if(custom[i].toObject()["id"]==definition["id"])custom[i]=definition;config["customPanels"]=custom;window->applyLayoutConfiguration(config);refreshPanelList();});
+    addButton(customActions,"Retirer",this,[this]{auto *panel=qobject_cast<CustomPanel *>(selectedPanel());if(!panel)return;remember();auto config=window->layoutConfiguration();auto custom=config["customPanels"].toArray();for(int i=custom.size();i-->0;)if(custom[i].toObject()["id"]==panel->objectName())custom.removeAt(i);config["customPanels"]=custom;window->applyLayoutConfiguration(config);refreshPanelList();});panelLayout->addLayout(customActions);
+
     widthLabel = new QLabel;
     heightLabel = new QLabel;
     widthSlider = new QSlider(Qt::Horizontal);
@@ -247,7 +253,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     addButton(profileLayout, "Enregistrer sous…", this, [this] {
         bool ok = false;
         auto name =
-            QInputDialog::getText(this, "Nouvelle disposition", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
+            glassInputText(this, "Nouvelle disposition", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
         if (!ok || name.isEmpty() || name.size() > 64 || name.contains('/') || name.contains('\\'))
             return;
         auto config = window->layoutConfiguration();
@@ -422,6 +428,7 @@ QDockWidget *LayoutDialog::selectedPanel() const {
 
 void LayoutDialog::refreshPanelList() {
     updating = true;
+    preview->setPanels(window->layoutPanels());
     const auto selected = selectedPanel() ? selectedPanel()->objectName() : QString();
     panels->clear();
     for (auto *d : window->layoutPanels()) {

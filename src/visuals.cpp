@@ -1,4 +1,5 @@
 #include "visuals.h"
+#include "glassstyle.h"
 #include "capsulescrollbar.h"
 #include <QtWidgets>
 #include <cmath>
@@ -47,6 +48,10 @@ class ControlFilter : public QObject {
         if (!widget)
             return false;
         if(event->type()==QEvent::Polish || event->type()==QEvent::Show) {
+            if(auto *check=qobject_cast<QCheckBox *>(widget);check&&!check->property("glassCheckInstalled").toBool()){
+                check->setProperty("glassCheckInstalled",true);check->setProperty("glassChecked",check->isChecked()?1.:0.);
+                QObject::connect(check,&QCheckBox::toggled,check,[check](bool on){animate(check,"glassChecked",on?1.:0.,150);});
+            }
             if(auto *area=qobject_cast<QAbstractScrollArea *>(widget))installCapsuleScrollBars(area);
             if(auto *view=qobject_cast<QAbstractItemView *>(widget)) {
                 view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
@@ -114,7 +119,7 @@ class ControlFilter : public QObject {
                                     : palette.color(QPalette::Button);
             fill = Visuals::mix(fill, palette.color(QPalette::Mid), press * .12);
             p.setBrush(fill);
-            p.setPen(QPen(alpha(text(), int(inToolbar ? 12 + hover * 22 : 28 + hover * 20)), 1));
+            p.setPen(Qt::NoPen);
             p.drawRoundedRect(frame, radius, radius);
             const auto color = combo->isEnabled() ? text() : palette.color(QPalette::PlaceholderText);
             p.setPen(color);
@@ -166,10 +171,10 @@ class ControlFilter : public QObject {
                     fill.setAlpha(0);
             }
             p.setBrush(fill);
-            p.setPen(QPen(alpha(primary ? accent : text(), flat && !primary ? 0 : dark ? 23 : 25), 1));
+            p.setPen(Qt::NoPen);
             p.drawRoundedRect(frame, radius, radius);
             // The fine upper edge gives the material depth without a permanent glow.
-            if (!flat || primary) {
+            if (press > .02) {
                 p.setBrush(Qt::NoBrush);
                 p.setPen(QPen(alpha(Qt::white, dark ? 18 : 110), .7));
                 p.drawRoundedRect(frame.adjusted(.5, .5, -.5, -.5), radius - .5, radius - .5);
@@ -361,6 +366,7 @@ void Visuals::install() {
     if (qApp->property("glassControlsInstalled").toBool())
         return;
     qApp->setProperty("glassControlsInstalled", true);
+    qApp->setStyle(new GlassStyle);
     qApp->installEventFilter(new ControlFilter(qApp));
 }
 void Visuals::configure(bool motion, bool transparency, int strength) {
@@ -719,4 +725,8 @@ void GlassComboBox::hidePopup() {
     if (popupAnimation) popupAnimation->stop();
     if (auto *fade = qobject_cast<QGraphicsOpacityEffect *>(view()->graphicsEffect())) fade->setOpacity(1);
     QComboBox::hidePopup();
+}
+
+QString glassInputText(QWidget *parent,const QString &title,const QString &label,QLineEdit::EchoMode mode,const QString &text,bool *ok){
+    GlassDialog dialog(parent);dialog.setWindowTitle(title);dialog.resize(500,230);auto *root=new QVBoxLayout(&dialog);root->setContentsMargins(26,26,26,22);root->setSpacing(14);auto *heading=new QLabel(title);heading->setObjectName("pageTitle");root->addWidget(heading);auto *caption=new QLabel(label);caption->setWordWrap(true);root->addWidget(caption);auto *field=new QLineEdit(text);field->setObjectName("inputValue");field->setEchoMode(mode);root->addWidget(field);auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons->button(QDialogButtonBox::Ok)->setText("Valider");buttons->button(QDialogButtonBox::Cancel)->setText("Annuler");root->addWidget(buttons);QObject::connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);QObject::connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);field->selectAll();field->setFocus();const bool accepted=dialog.exec()==QDialog::Accepted;if(ok)*ok=accepted;return accepted?field->text():QString();
 }

@@ -12,7 +12,7 @@ CodexClient::CodexClient(QObject *parent, const QString &executable) : QObject(p
         request(
             "initialize",
             {{"clientInfo",
-              QJsonObject{{"name", "github_enhanced"}, {"title", "GitHub Enhanced"}, {"version", "0.1.0"}}}},
+              QJsonObject{{"name", "github_enhanced"}, {"title", "GitHub Enhanced"}, {"version", QCoreApplication::applicationVersion()}}}},
             [this](QJsonObject, QString error) {
                 if (!error.isEmpty()) {
                     failed(error);

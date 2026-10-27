@@ -71,7 +71,7 @@ ErrorExplanation Diagnostics::explain(const QString &raw) {
     return known("Des conflits Git empêchent de continuer.",
                  "Résolvez les fichiers en conflit, enregistrez-les puis "
                  "terminez l’opération Git en cours.");
-  if (has("would be overwritten|local changes.*overwritten"))
+  if (has("would be overwritten|local changes.*overwritten|modifications locales seraient écrasées"))
     return known("Des modifications locales seraient écrasées.",
                  "Créez un commit ou utilisez « Mettre de côté (stash) » avant "
                  "de recommencer.");

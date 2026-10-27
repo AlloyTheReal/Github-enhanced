@@ -41,7 +41,7 @@ QString Theme::directory() {
 
 QList<QJsonObject> Theme::installed() {
     QList<QJsonObject> list;
-    for (const auto &name : {"midnight", "daylight", "forest", "obsidian"}) {
+    for (const auto &name : {"midnight", "daylight", "forest", "obsidian", "graphite", "paper", "ocean"}) {
         auto theme = read(QString(":/themes/%1.json").arg(name));
         if (!theme.isEmpty()) list.append(theme);
     }
@@ -89,8 +89,9 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
     QString css = R"(
         QMainWindow, QDialog { background: @background; color: @text; }
         QDialog#settingsDialog, QDialog#layoutEditor, QDialog#colorPicker { background: transparent; }
-        QMainWindow::separator { background: @border; width: 1px; height: 1px; }
-        QToolBar { background: @toolbar; border: 1px solid @hairline; border-radius: 14px; spacing: 6px; padding: 5px 10px; margin: 8px 10px; }
+        QMainWindow::separator { background: transparent; width: 5px; height: 5px; }
+        QMainWindow::separator:hover { background: @card; }
+        QToolBar { background: @toolbar; border: 0; border-radius: 16px; spacing: 6px; padding: 5px 10px; margin: 8px 10px; }
         QToolBar::separator { width: 1px; background: @hairline; margin: 6px; }
         QWidget#toolbarBlock { border: 0; background: transparent; }
         QToolBar QToolButton, QToolBar QComboBox { min-height: 28px; padding: 4px 10px; border: 0; background: transparent; }
@@ -110,13 +111,13 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QLabel#changeCount { border-bottom: 1px solid @hairline; }
         QLabel { background: transparent; }
         QListWidget, QTreeWidget { background: @surface; color: @text; border: 0; outline: 0; padding: 0; }
-        QListWidget::item, QTreeWidget::item { padding: 8px 10px; border: 0; }
+        QListWidget::item, QTreeWidget::item { padding: 8px 10px; border: 0; border-radius: 7px; margin: 1px 3px; }
         QListWidget#layoutPanels::item { padding: 4px 8px; }
         QListWidget#recentRepositories::item:selected { background: @navSelection; color: @text; }
-        QListWidget::item:selected, QTreeWidget::item:selected { background: @accent; color: @selectionText; }
+        QListWidget::item:selected, QTreeWidget::item:selected { background: @card; color: @text; }
         QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected { background: @background; }
         QPlainTextEdit, QTextEdit, QLineEdit, QComboBox, QSpinBox {
-            background: @field; color: @text; border: 1px solid @hairline; border-radius: 10px;
+            background: @field; color: @text; border: 0; border-radius: 10px;
             padding: 7px 10px; selection-background-color: @accent; selection-color: @selectionText;
         }
         QComboBox { padding: 7px 30px 7px 12px; min-height: 22px; }
@@ -125,13 +126,13 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QSpinBox::up-button, QSpinBox::down-button { width: 24px; border: 0; background: transparent; }
         QSpinBox::up-arrow, QSpinBox::down-arrow { width: 0; height: 0; image: none; }
         QSpinBox QLineEdit { border: 0; padding: 0; background: transparent; }
-        QFrame#glassComboPopup { background: @background; border: 1px solid @hairline; border-radius: 12px; }
-        QComboBox QAbstractItemView { background: @background; color: @text; border: 1px solid @hairline; border-radius: 12px; padding: 6px; selection-background-color: @card; selection-color: @text; outline: 0; }
+        QFrame#glassComboPopup { background: @background; border: 0; border-radius: 12px; }
+        QComboBox QAbstractItemView { background: @background; color: @text; border: 0; border-radius: 12px; padding: 6px; selection-background-color: @card; selection-color: @text; outline: 0; }
         QComboBox QAbstractItemView::item { min-height: 28px; padding: 4px 12px; border-radius: 7px; }
         QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover { background: @card; color: @text; }
         QComboBox QAbstractItemView::item:disabled { color: @muted; background: transparent; }
         QPlainTextEdit#diffEditor { border: 0; border-radius: 0; padding: 14px 18px; background: @surface; }
-        QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: @focus; }
+        QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { background: @card; }
         QPushButton, QToolButton { background: transparent; color: @text; border: 0; border-radius: 11px; padding: 8px 16px; min-height: 20px; }
         QPushButton:disabled, QToolButton:disabled { color: @muted; }
         QTabWidget::pane { border: 0; background: transparent; }
@@ -139,7 +140,14 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QTabBar::tab:selected { background: @card; color: @text; border-radius: 10px; }
         QHeaderView::section { background: @background; color: @muted; border: 0; padding: 8px; }
         QStatusBar { background: @background; color: @muted; border: 0; font-size: 11px; }
-        QSplitter::handle { background: @hairline; }
+        QSplitter::handle { background: transparent; }
+        QSplitter::handle:hover { background: @card; }
+        QCheckBox, QRadioButton { spacing: 9px; padding: 5px 0; background: transparent; }
+        QSlider::groove:horizontal { height: 5px; border-radius: 2px; background: @card; }
+        QSlider::sub-page:horizontal { background: @accent; border-radius: 2px; }
+        QSlider::handle:horizontal { width: 18px; height: 18px; margin: -7px 0; border: 0; border-radius: 9px; background: @text; }
+        QGroupBox { border: 0; padding-top: 18px; }
+        QToolTip { background: @surface; color: @text; border: 0; padding: 8px; }
         QProgressBar { background: @card; border: 0; border-radius: 4px; min-height: 8px; max-height: 8px; }
         QProgressBar::chunk { background: @accent; border-radius: 4px; }
         QToolButton#removeRecent, QToolButton#removeRecentMenu { padding: 2px; min-width: 22px; min-height: 22px; border-radius: 11px; }
@@ -148,8 +156,8 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QTreeWidget#commitFiles { background: transparent; }
         QFrame#settingsSidebar { background: @sidebar; border-top-left-radius: 24px; border-bottom-left-radius: 24px; }
         QFrame#settingsContent { background: @content; border-radius: 22px; }
-        QFrame#settingsCard { background: @card; border: 1px solid @cardBorder; border-radius: 14px; }
-        QFrame#segmented { background: @field; border: 1px solid @hairline; border-radius: 12px; }
+        QFrame#settingsCard { background: @card; border: 0; border-radius: 14px; }
+        QFrame#segmented { background: @field; border: 0; border-radius: 12px; }
         QListWidget#settingsNavigation { background: transparent; border: 0; padding: 0; }
         QListWidget#settingsNavigation::item { color: @muted; padding: 11px 14px; border: 0; margin: 2px 0; border-radius: 12px; }
         QListWidget#settingsNavigation::item:selected { background: @navSelection; color: @text; }
@@ -157,17 +165,17 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QListWidget#settingsNavigation::item:disabled { background: transparent; color: @muted; padding: 10px 10px 4px 10px; font-size: 11px; }
         QScrollArea, QStackedWidget, QWidget#settingsPage { background: transparent; border: 0; }
         QScrollArea > QWidget > QWidget { background: transparent; }
-        QLineEdit#settingsSearch { background: @card; border: 1px solid @hairline; border-radius: 12px; min-height: 22px; padding: 9px 12px; }
+        QLineEdit#settingsSearch { background: @card; border: 0; border-radius: 12px; min-height: 22px; padding: 9px 12px; }
         QLineEdit#hexField { font-family: monospace; padding: 5px 8px; min-height: 18px; border: 0; background: @field; }
         QSlider::groove:horizontal { height: 5px; border-radius: 2px; background: @border; }
         QSlider::sub-page:horizontal { background: @accent; border-radius: 2px; }
-        QSlider::handle:horizontal { width: 16px; margin: -6px 0; background: @text; border: 1px solid @hairline; border-radius: 8px; }
+        QSlider::handle:horizontal { width: 16px; margin: -6px 0; background: @text; border: 0; border-radius: 8px; }
         QSlider#hueSlider::groove:horizontal { height: 10px; border-radius: 5px; background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #ff0000,stop:0.17 #ffff00,stop:0.33 #00ff00,stop:0.5 #00ffff,stop:0.67 #0000ff,stop:0.83 #ff00ff,stop:1 #ff0000); }
         QSlider#hueSlider::sub-page:horizontal { background: transparent; }
-        QMenu { background: @background; color: @text; border: 1px solid @hairline; padding: 6px; }
+        QMenu { background: @background; color: @text; border: 0; padding: 6px; }
         QMenu::item { padding: 7px 24px 7px 14px; border-radius: 7px; }
         QMenu::item:selected { background: @card; }
-        QGroupBox { border: 1px solid @hairline; border-radius: 12px; margin-top: 12px; padding: 14px; }
+        QGroupBox { border: 0; border-radius: 12px; margin-top: 12px; padding: 14px; }
         QGroupBox::title { subcontrol-origin: margin; left: 12px; color: @muted; }
     )";
     const bool dark = c("surface").lightness() < 128;

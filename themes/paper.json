@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "paper",
+  "name": "Papier",
+  "author": "GitHub Enhanced",
+  "background": "#f5f3ef",
+  "surface": "#ffffff",
+  "text": "#252628",
+  "muted": "#74777c",
+  "accent": "#52779e",
+  "border": "#e4e1dc",
+  "added": "#76ad8b",
+  "removed": "#d58d8d"
+}

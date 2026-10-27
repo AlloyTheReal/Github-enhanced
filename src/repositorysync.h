@@ -4,7 +4,8 @@
 #include <QHash>
 
 struct RepositorySyncState {
-  QString repository, branch, head, upstream, remote, remoteRef, error;
+  QString repository, branch, head, upstream, upstreamRef, remote, remoteRef,
+      error;
   QString kind = "unknown";
   int ahead = 0, behind = 0;
   QDateTime checkedAt;
@@ -29,7 +30,7 @@ private:
   QString pendingPath;
   bool pendingFetch = false, active = false;
   void findRemote(bool fetch);
-  void compare();
+  void compare(bool infer = true);
   void finish();
   QString key() const { return state.repository + '\n' + state.remote; }
 };

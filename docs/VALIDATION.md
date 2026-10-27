@@ -1,4 +1,4 @@
-# Validation locale — 26 octobre 2026
+# Validation locale — 27 octobre 2026
 
 Environnement : Linux x86_64 (CachyOS), glibc 2.44, Qt 6.12.0, GCC 16.2.1 et CMake 4.4.4.
 
@@ -68,3 +68,24 @@ Vingt cas de diagnostic vérifiés : workflow OAuth, gros fichiers et quota LFS,
 Tests supplémentaires : conservation du message d’origine, échappement du texte technique, contexte d’un brouillon de release déjà créé, journal masqué en mode simple, bascule entre les modes, préférence mémorisée, synchronisation du menu Affichage et de la fenêtre d’activité, et absence de réapparition d’une ancienne erreur après un nouveau statut.
 
 Les trois suites CTest passent, avec Git LFS réel activé. Captures contrôlées : `error-simple.png`, `error-advanced.png` et `organization-menu.png`. Les listes déroulantes utilisent un composant commun avec vue compacte, surlignage arrondi, défilement et animation respectant l’option de réduction des mouvements. Le rendu natif Windows/macOS reste à vérifier sur ces plateformes.
+
+
+## Refonte 0.2.0 — 27 octobre 2026
+
+Compilation Release et trois suites CTest réussies, avec Git LFS réel activé. Les tests ajoutés couvrent :
+
+- Création visible d’un panneau, annulation/rétablissement avec contenu et restauration après redémarrage.
+- Sérialisation des tâches, cases cochées, état de dépôt et rejet des définitions de panneau invalides.
+- Application des palettes de départ sans supprimer l’édition des rôles de couleur.
+- Synchronisation Fetch/Push/Pull sur un distant nommé upstream, avec fetch initial et comparaison sans configuration de suivi. Les HEAD local et distant sont vérifiés après push et pull.
+- Fusion réelle de deux branches, refus sur dépôt modifié, résolution locale/entrante de conflits et annulation conservant le commit précédent.
+- Versions sémantiques, choix d’asset et d’architecture, rejet d’une URL extérieure au dépôt et d’une empreinte invalide, téléchargement simulé et rejet d’un fichier corrompu.
+- Remplacement atomique d’une AppImage de test, sauvegarde de la version précédente et protection contre une modification du fichier après téléchargement. Aucun exécutable utilisateur n’a été remplacé.
+
+La configuration sous un tag v2.3.4 produit bien une version embarquée 2.3.4. Les deux workflows sont syntaxiquement valides. Les captures workspace, custom-panels et palette-presets sont contrôlées visuellement ; le logo PNG/ICO/ICNS est dérivé du SVG fourni.
+
+Aucune release distante n’a été créée, aucun tag poussé et aucun téléchargement/installation d’une vraie mise à jour n’a été effectué sur le compte utilisateur. Le workflow de publication et les installateurs Windows/macOS restent à exécuter sur leurs plateformes. La signature, notarisation et validation HIG/VoiceOver native restent à réaliser avant une distribution publique finalisée.
+
+L’AppImage Linux 0.2.0 a été générée et son démarrage contrôlé avec Qt offscreen, en mode extraction et avec un profil isolé. Les archives binaire et source 0.2.0 sont également générées. La version embarquée affiche 0.2.0.
+
+Accès aux réglages : restauration de la barre d’outils vérifiée avec celle-ci masquée, barre d’état masquée et profil rechargé ; ouverture directe de la page Couleurs vérifiée. Captures contrôlées : `toolbar-recovery.png` et `colors-shortcut.png`.

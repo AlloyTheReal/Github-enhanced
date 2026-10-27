@@ -22,7 +22,7 @@ CapsuleScrollBar::CapsuleScrollBar(Qt::Orientation orientation, QWidget *parent)
   quiet.setSingleShot(true);
   connect(&quiet, &QTimer::timeout, this, [this] {
     if (!underMouse() && !dragging)
-      animate(fade, opacity, .25, 320);
+      animate(fade, opacity, .08, 380);
   });
   connect(this, &QScrollBar::valueChanged, this, [this] { reveal(); });
   connect(this, &QScrollBar::rangeChanged, this, [this] { update(); });
@@ -32,7 +32,7 @@ CapsuleScrollBar::CapsuleScrollBar(Qt::Orientation orientation, QWidget *parent)
   });
 }
 QSize CapsuleScrollBar::sizeHint() const {
-  return orientation() == Qt::Vertical ? QSize(14, 100) : QSize(100, 14);
+  return orientation() == Qt::Vertical ? QSize(12, 100) : QSize(100, 12);
 }
 bool CapsuleScrollBar::reversed() const {
   return invertedAppearance() ^ (orientation() == Qt::Horizontal &&
@@ -52,7 +52,7 @@ QRectF CapsuleScrollBar::thumbRect() const {
   if (reversed())
     ratio = 1 - ratio;
   const qreal start = 3 + ratio * (length - thumb),
-              thickness = 5 + expanded * 4;
+              thickness = 4 + expanded * 3;
   return orientation() == Qt::Vertical
              ? QRectF((width() - thickness) / 2, start, thickness, thumb)
              : QRectF(start, (height() - thickness) / 2, thumb, thickness);

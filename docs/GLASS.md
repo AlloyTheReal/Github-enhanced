@@ -31,3 +31,13 @@ Sur Mac, `nativeglass_mac.mm` ajoute un fond AppKit aux dialogues : `NSGlassEffe
 Le code AppKit et son intégration avec les vues Qt doivent encore être compilés et contrôlés sur un vrai Mac. L’apparence, l’accessibilité et les performances doivent y être validées avant de revendiquer une conformité Apple HIG ou une expérience identique aux applications Apple.
 
 Références Apple : [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass), [NSGlassEffectView](https://developer.apple.com/documentation/appkit/nsglasseffectview), [NSVisualEffectView](https://developer.apple.com/documentation/appkit/nsvisualeffectview).
+
+## Cohérence des contrôles — 0.2.0
+
+Le style partagé dessine les coches, radios, flèches, focus clavier et états des listes. Les listes déroulantes, commandes, champs, curseurs et onglets suivent la palette de l’application ; les cartes et panneaux utilisent les espacements et surfaces plutôt que des contours permanents. Les demandes de texte utilisent le dialogue verre. Les sélecteurs de fichiers sont intégrés au style sur Linux et Windows ; macOS conserve ses sélecteurs système.
+
+Les défilements, survols et coches ont des animations courtes avec accélération progressive ; le réglage de réduction des animations et la préférence d’accessibilité macOS sont respectés. Les barres de défilement restent utilisables au clavier et lors du glissement. La copie des mises à jour et les opérations réseau ne bloquent pas la boucle d’interface.
+
+Références de conception : [Apple — Layout](https://developer.apple.com/design/human-interface-guidelines/layout) et [Apple — Materials](https://developer.apple.com/design/human-interface-guidelines/materials). Il s’agit d’un rendu Qt personnalisé inspiré de ces principes, avec matériaux AppKit sur les macOS compatibles, pas d’une certification HIG/VoiceOver. La validation native macOS reste nécessaire.
+
+Le logo source est `favicon.svg`. Les icônes PNG, ICO et ICNS de `packaging/icons/` en sont des conversions pour les fenêtres et les paquets des différentes plateformes.

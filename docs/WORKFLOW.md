@@ -57,3 +57,13 @@ Le défilement à molette est animé ; les gestes précis du pavé tactile conse
 ![Capsules et position conservée après actualisation](capsule-scroll.png)
 
 ![Exemple visuel de progression, avec données simulées](operation-progress.png)
+
+## Synchronisation et fusion
+
+Un bouton unique de la barre d’outils affiche Fetch, Push, Pull, Publier ou Fusionner selon l’état réellement constaté. Le dépôt est récupéré à l’ouverture et revérifié périodiquement. Le distant est celui de la branche suivie ; à défaut, origin ou le premier distant est utilisé. Une branche distante du même nom peut être comparée sans modifier silencieusement la configuration de suivi Git.
+
+**Dépôt → Fusionner une branche…** intègre une branche locale ou distante dans la branche courante. Le dialogue affiche les commits propres à chaque côté, vérifie la branche, HEAD, l’état de fusion et les modifications locales avant l’opération. La cible est figée par son identifiant de commit. L’autostash est désactivé pour cette fusion : commitez ou mettez de côté les modifications locales avant de commencer.
+
+En cas de conflit, sélectionnez un fichier puis choisissez la version locale, la version entrante ou ouvrez-le dans votre éditeur avant de cliquer sur **Marquer résolu**. **Terminer la fusion** crée le commit lorsque tous les conflits sont résolus. **Annuler la fusion** appelle `git merge --abort`. Fermer le dialogue en conservant des conflits laisse la fusion en cours ; rouvrez-le pour continuer. Aucun push n’est réalisé par la fusion et aucun push forcé n’est utilisé.
+
+Cette logique s’appuie sur les mêmes primitives Git que [GitHub Desktop Linux](https://github.com/shiftkey/desktop/blob/linux/app/src/lib/git/merge.ts), avec une implémentation C++ indépendante.

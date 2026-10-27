@@ -15,6 +15,7 @@ class LayoutCanvas : public QWidget {
     };
     LayoutCanvas(QMainWindow *window, const QList<QDockWidget *> &panels, QWidget *parent = nullptr);
     void select(QDockWidget *panel);
+    void setPanels(const QList<QDockWidget *> &items);
     QRectF panelRect(const QString &id) const;
     QList<Splitter> splitters() const;
   signals:

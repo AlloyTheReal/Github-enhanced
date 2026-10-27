@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QLineEdit>
 #include <QComboBox>
 #include <QPointer>
 #include <QPropertyAnimation>
@@ -96,3 +97,5 @@ public:
 private:
     QPointer<QPropertyAnimation> popupAnimation;
 };
+
+QString glassInputText(QWidget *parent,const QString &title,const QString &label,QLineEdit::EchoMode mode=QLineEdit::Normal,const QString &text={},bool *ok=nullptr);

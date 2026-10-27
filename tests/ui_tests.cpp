@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "custompanel.h"
 #include "accountdialog.h"
 #include "layoutdialog.h"
 #include "settingsdialog.h"
@@ -23,6 +24,24 @@ private slots:
         QCoreApplication::setOrganizationName("GitHubEnhancedTests");
         QCoreApplication::setApplicationName("UI");
         QSettings::setDefaultFormat(QSettings::IniFormat);
+    }
+    void customPanelsPersistAndUndo(){
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+        MainWindow window;window.show();window.findChild<QAction *>("tool-layout")->trigger();auto *editor=window.findChild<LayoutDialog *>();QVERIFY(editor);auto *create=editor->findChild<QPushButton *>("addCustomPanel");QVERIFY(create);
+        QTimer::singleShot(0,editor,[&]{auto *form=editor->findChild<QDialog *>("customPanelEditor");if(!form)return;form->findChild<QLineEdit *>("customPanelTitle")->setText("Carnet du projet");for(auto *box:form->findChildren<QDialogButtonBox *>())box->button(QDialogButtonBox::Save)->click();});
+        create->click();auto panels=window.findChildren<CustomPanel *>();QCOMPARE(panels.size(),1);QTRY_VERIFY(panels.first()->isVisible());auto *notes=panels.first()->findChild<QPlainTextEdit *>("customPanelNotes");QVERIFY(notes);notes->setPlainText("Notes conservées après redémarrage");const auto id=panels.first()->objectName();
+        editor->findChild<QPushButton *>("layoutUndo")->click();QCOMPARE(window.findChildren<CustomPanel *>().size(),0);
+        editor->findChild<QPushButton *>("layoutRedo")->click();panels=window.findChildren<CustomPanel *>();QCOMPARE(panels.size(),1);QCOMPARE(panels.first()->findChild<QPlainTextEdit *>("customPanelNotes")->toPlainText(),"Notes conservées après redémarrage");
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))editor->grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/custom-panels.png");
+        for(auto *box:editor->findChildren<QDialogButtonBox *>())if(box->button(QDialogButtonBox::Save))box->button(QDialogButtonBox::Save)->click();QTest::qWait(30);QVERIFY(window.close());
+        MainWindow restored;restored.show();auto *panel=restored.findChild<CustomPanel *>(id);QVERIFY(panel);QCOMPARE(panel->windowTitle(),"Carnet du projet");QCOMPARE(panel->findChild<QPlainTextEdit *>("customPanelNotes")->toPlainText(),"Notes conservées après redémarrage");QVERIFY(restored.close());
+    }
+    void palettePresetsRemainEditable(){
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());const auto base=Theme::read(QFINDTESTDATA("../themes/obsidian.json"));
+        SettingsDialog dialog(QJsonObject{{"version",1},{"theme",base},{"fontSize",11}});dialog.show();auto *preset=dialog.findChild<QComboBox *>("palettePreset");QVERIFY(preset);int paper=-1;for(int i=0;i<preset->count();++i)if(preset->itemData(i).toJsonObject()["id"]=="paper")paper=i;QVERIFY(paper>=0);preset->setCurrentIndex(paper);QMetaObject::invokeMethod(preset,"activated",Q_ARG(int,paper));
+        QLineEdit *background=nullptr;for(auto *field:dialog.findChildren<QLineEdit *>("hexField"))if(field->property("colorRole")=="background")background=field;QVERIFY(background);QCOMPARE(background->text(),"#F5F3EF");
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")){auto *nav=dialog.findChild<QListWidget *>("settingsNavigation");for(int i=0;i<nav->count();++i)if(nav->item(i)->data(Qt::UserRole).toInt()==1)nav->setCurrentRow(i);QTest::qWait(150);dialog.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/palette-presets.png");}
+        dialog.reject();
     }
     void advancedModeMenu() {
         QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());Diagnostics::instance().setAdvanced(false);
@@ -159,7 +178,7 @@ private slots:
         for (auto *b : dialog->findChildren<QPushButton *>()) if (b->text() == "Enregistrer sous…") saveProfile = b;
         QVERIFY(saveProfile);
         QTimer::singleShot(100, &window, [] {
-            if (auto *input = qobject_cast<QInputDialog *>(QApplication::activeModalWidget())) { input->setTextValue("Disposition de test"); input->accept(); }
+            if (auto *input = qobject_cast<QDialog *>(QApplication::activeModalWidget())) { if(auto *field=input->findChild<QLineEdit *>("inputValue")){field->setText("Disposition de test");input->accept();} }
         });
         saveProfile->click();
         QVERIFY(QSettings().contains("layouts/Disposition de test"));
@@ -355,10 +374,19 @@ private slots:
     void cleanWorkingTreeWithUnpushedCommit(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repository.path());p.start("git",args);return p.waitForFinished(10000)&&p.exitCode()==0;};
         const auto remote=repository.path()+"-remote.git";QVERIFY(git({"init","--bare","--initial-branch=main",remote}));QVERIFY(git({"init","--initial-branch=main"}));QVERIFY(git({"config","user.name","UI Sync"}));QVERIFY(git({"config","user.email","ui@example.invalid"}));QVERIFY(git({"config","commit.gpgsign","false"}));QFile file(repository.filePath("sample.txt"));QVERIFY(file.open(QIODevice::WriteOnly));file.write("base\n");file.close();QVERIFY(git({"add","--all"}));QVERIFY(git({"commit","-m","base"}));QVERIFY(git({"remote","add","origin",remote}));QVERIFY(git({"push","-u","origin","main"}));QVERIFY(file.open(QIODevice::WriteOnly));file.write("local change\n");file.close();QVERIFY(git({"commit","-am","unpushed"}));
-        MainWindow window;window.show();window.openRepository(repository.path());auto *status=window.findChild<QLabel *>("syncStatus");auto *action=window.findChild<QPushButton *>("syncAction");auto *changed=window.findChild<QTreeWidget *>("changedFiles");QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("1 commit à envoyer"),10000);QTRY_VERIFY(action->isEnabled());QCOMPARE(changed->topLevelItemCount(),0);QVERIFY(!window.findChild<QLabel *>("fileTitle")->text().contains("à jour"));
+        MainWindow window;window.show();window.openRepository(repository.path());auto *status=window.findChild<QLabel *>("syncStatus");auto *action=window.findChild<QPushButton *>("syncAction");auto *changed=window.findChild<QTreeWidget *>("changedFiles");QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("1 commit à envoyer"),10000);QTRY_VERIFY(action->isEnabled());QCOMPARE(changed->topLevelItemCount(),0);QVERIFY(window.findChild<QAction *>("tool-sync")->text().contains("Push origin"));QVERIFY(!window.findChild<QLabel *>("fileTitle")->text().contains("à jour"));
         if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))window.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/sync-ahead.png");
         QVERIFY(git({"switch","--detach"}));action->click();QTRY_VERIFY(status->text().contains("HEAD détachée"));QVERIFY(git({"switch","main"}));window.findChild<QPushButton *>("verifyRemote")->click();QTRY_VERIFY(status->text().contains("1 commit à envoyer"));QTRY_VERIFY(action->isEnabled());
-        action->click();QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);QVERIFY(file.open(QIODevice::Append));file.write("not committed yet\n");file.close();window.findChild<QAction *>("tool-refresh")->trigger();QTRY_COMPARE(changed->topLevelItemCount(),1);QTRY_VERIFY(status->text().contains("modifications locales à commiter"));QVERIFY(!status->text().contains("Synchronisée avec"));QTRY_VERIFY(changed->isEnabled());QVERIFY(window.close());QVERIFY(QDir(remote).removeRecursively());
+        action->click();QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);QTRY_VERIFY(window.findChild<QAction *>("tool-sync")->text().contains("Fetch origin"));QVERIFY(file.open(QIODevice::Append));file.write("not committed yet\n");file.close();window.findChild<QAction *>("tool-refresh")->trigger();QTRY_COMPARE(changed->topLevelItemCount(),1);QTRY_VERIFY(status->text().contains("modifications locales à commiter"));QVERIFY(!status->text().contains("Synchronisée avec"));QTRY_VERIFY(changed->isEnabled());QVERIFY(window.close());QVERIFY(QDir(remote).removeRecursively());
+    }
+    void adaptiveSyncTracksOtherRemotesAndPulls(){
+        QTemporaryDir data,config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());const auto local=data.filePath("local"),remote=data.filePath("remote.git"),peer=data.filePath("peer");QDir().mkpath(local);
+        auto git=[&](const QString &cwd,QStringList args){QProcess p;p.setWorkingDirectory(cwd);p.start("git",args);p.waitForFinished(10000);return CommandResult{p.exitCode(),p.readAllStandardOutput(),p.readAllStandardError()};};
+        auto configure=[&](const QString &cwd){return git(cwd,{"config","user.name","Adaptive Sync"}).ok()&&git(cwd,{"config","user.email","sync@example.invalid"}).ok()&&git(cwd,{"config","commit.gpgsign","false"}).ok();};
+        QVERIFY(git(data.path(),{"init","--bare","--initial-branch=main",remote}).ok());QVERIFY(git(local,{"init","--initial-branch=main"}).ok());QVERIFY(configure(local));QFile file(local+"/file.txt");QVERIFY(file.open(QIODevice::WriteOnly));file.write("base\n");file.close();QVERIFY(git(local,{"add","--all"}).ok());QVERIFY(git(local,{"commit","-m","base"}).ok());QVERIFY(git(local,{"remote","add","upstream",remote}).ok());QVERIFY(git(local,{"push","upstream","main"}).ok());
+        QVERIFY(file.open(QIODevice::Append));file.write("local\n");file.close();QVERIFY(git(local,{"commit","-am","local"}).ok());
+        MainWindow window;window.show();window.openRepository(local);auto *action=window.findChild<QAction *>("tool-sync");auto *status=window.findChild<QLabel *>("syncStatus");QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Push upstream"),10000);QTRY_VERIFY(action->isEnabled());QVERIFY(!git(local,{"config","--get","branch.main.remote"}).ok());action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Fetch upstream"),10000);QTRY_VERIFY(action->isEnabled());
+        QVERIFY(git(data.path(),{"clone",remote,peer}).ok());QVERIFY(configure(peer));QFile incoming(peer+"/from-peer.txt");QVERIFY(incoming.open(QIODevice::WriteOnly));incoming.write("incoming\n");incoming.close();QVERIFY(git(peer,{"add","--all"}).ok());QVERIFY(git(peer,{"commit","-m","incoming"}).ok());QVERIFY(git(peer,{"push"}).ok());action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Pull upstream"),10000);QTRY_VERIFY(action->isEnabled());QVERIFY(status->text().contains("1 commit à récupérer"));action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Fetch upstream"),10000);QVERIFY(QFileInfo::exists(local+"/from-peer.txt"));QCOMPARE(git(local,{"rev-parse","HEAD"}).output,git(peer,{"rev-parse","HEAD"}).output);QTRY_VERIFY(action->isEnabled());QVERIFY(window.close());
     }
     void scrollingSurvivesRefresh(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());QProcess git;git.setWorkingDirectory(repository.path());git.start("git",{"init","--initial-branch=main"});QVERIFY(git.waitForFinished(5000)&&git.exitCode()==0);

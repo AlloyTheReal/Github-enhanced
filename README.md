@@ -1,6 +1,6 @@
 # GitHub Enhanced
 
-Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.1.0 — aperçu fonctionnel**. Non affilié à GitHub.
+Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.0 — aperçu fonctionnel**. Non affilié à GitHub.
 
 ![Interface GitHub Enhanced](docs/preview.png)
 
@@ -11,12 +11,15 @@ Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. 
 - État distant distinct : commits à envoyer/recevoir, divergence, branche suivie, dernière vérification et erreurs réseau visibles.
 - Git LFS automatique pour les fichiers modifiés à partir de 50 Mio ; contrôle avant envoi et conversion proposée pour les gros fichiers déjà commités, avec sauvegarde locale. Installation automatique du composant officiel.
 - Fenêtre d’activité avec progression et erreurs expliquées en français ; mode avancé mémorisé pour consulter les détails techniques ([guide](docs/ERRORS.md)). Suppression des raccourcis récents par une croix.
-- Création et changement de branche ; fetch, pull rapide uniquement, push, publication de branche, configuration d’origin ; stash et réapplication.
+- Bouton Fetch/Push/Pull adaptatif avec fetch initial ; fusion de branches, résolution et annulation des conflits ; publication, configuration d’origin et stash.
+- Mise à jour : vérification des releases GitHub au lancement, téléchargement vérifié SHA-256 et installation guidée ([détails](docs/UPDATES.md)).
+- Icône de l’application et des paquets dérivée de `favicon.svg`.
 - Interface inspirée du verre : palette charbon, cartes arrondies, chevrons fins et animations courtes.
 - Réglages à navigation latérale, éditeur de couleurs avec aperçu et sélecteur HSV/HEX, options de réduction des effets.
 - Éditeur de disposition manipulable : glisser-déposer des panneaux, séparateurs et curseurs de dimensions en direct, annuler/rétablir, onglets et fenêtres détachées ; profils importables/exportables.
+- Panneaux personnalisés de notes, tâches et état du dépôt ; création, suppression, persistance, import/export et annulation dans l’éditeur.
 - Barre d’outils configurable : choix des commandes, ordre, visibilité, position et présentation.
-- Quatre thèmes intégrés, éditeur de couleurs, import/export JSON et taille de texte.
+- Sept palettes intégrées et presets de départ, éditeur de couleurs, import/export JSON et taille de texte.
 - Chargement de catalogues de thèmes communautaires via HTTPS.
 - Connexion OAuth GitHub et ChatGPT/Codex avec les outils officiels ; installation guidée des composants.
 - Création/publication de dépôt sur le compte personnel ou une organisation accessible, avec compte connecté affiché, restrictions de visibilité et espaces remplacés par des tirets.
@@ -82,7 +85,7 @@ cpack --config build/release/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B dist
 bash packaging/linux/appimage.sh
 # Archive source pour Arch ou compilation locale
 cpack --config build/release/CPackSourceConfig.cmake -B dist
-cp dist/github-enhanced-0.1.0.tar.gz packaging/arch/
+cp dist/github-enhanced-0.2.0.tar.gz packaging/arch/
 cd packaging/arch
 makepkg -si
 ```

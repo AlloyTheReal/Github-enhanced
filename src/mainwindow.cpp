@@ -1,4 +1,7 @@
 #include "mainwindow.h"
+#include "custompanel.h"
+#include "updatedialog.h"
+#include "mergedialog.h"
 #include "diagnostics.h"
 #include "settingsdialog.h"
 #include "layoutdialog.h"
@@ -14,6 +17,12 @@
 #include <QDesktopServices>
 
 namespace {
+class MenuTextButton : public QToolButton {
+public:
+    using QToolButton::QToolButton;
+    QSize sizeHint() const override { auto size=QToolButton::sizeHint();size.setWidth(qMax(size.width(),fontMetrics().horizontalAdvance(text())+28));return size; }
+    QSize minimumSizeHint() const override { return sizeHint(); }
+};
 QIcon commandIcon(const QString &kind) {
     QPixmap image(40, 40); image.setDevicePixelRatio(2); image.fill(Qt::transparent);
     QPainter p(&image); p.setRenderHint(QPainter::Antialiasing);
@@ -22,7 +31,7 @@ QIcon commandIcon(const QString &kind) {
     if (kind == "layout") { p.drawRoundedRect(QRectF(2, 3, 16, 14), 2, 2); p.drawLine(8, 3, 8, 17); p.drawLine(2, 12, 8, 12); }
     else if (kind == "push" || kind == "publish") arrow(true);
     else if (kind == "pull") arrow(false);
-    else if (kind == "fetch" || kind == "refresh") { p.drawArc(QRectF(3, 3, 14, 14), 35*16, 285*16); p.drawLine(17, 2, 17, 7); p.drawLine(12, 7, 17, 7); }
+    else if (kind == "fetch" || kind == "refresh" || kind == "sync") { p.drawArc(QRectF(3, 3, 14, 14), 35*16, 285*16); p.drawLine(17, 2, 17, 7); p.drawLine(12, 7, 17, 7); }
     else if (kind == "commit") { p.drawLine(2, 10, 6, 10); p.drawLine(14, 10, 18, 10); p.drawEllipse(QRectF(6, 6, 8, 8)); }
     else if (kind == "stage" || kind == "unstage" || kind == "init") { p.drawRoundedRect(QRectF(3, 3, 14, 14), 3, 3); p.drawLine(6, 10, 14, 10); if (kind != "unstage") p.drawLine(10, 6, 10, 14); }
     else if (kind == "new-branch") { p.drawEllipse(QRectF(3, 2, 4, 4)); p.drawEllipse(QRectF(3, 14, 4, 4)); p.drawEllipse(QRectF(13, 2, 4, 4)); p.drawLine(5, 6, 5, 14); QPainterPath path; path.moveTo(5, 13); path.cubicTo(5, 8, 15, 12, 15, 6); p.drawPath(path); }
@@ -40,6 +49,11 @@ QPushButton *button(const QString &text, QLayout *layout, std::function<void()> 
     auto *b = new QPushButton(text); if (primary) b->setObjectName("primary");
     layout->addWidget(b); QObject::connect(b, &QPushButton::clicked, context, std::move(callback)); return b;
 }
+QWidget *dockHeader(QDockWidget *dock) {
+    auto *bar=new QWidget(dock);bar->setObjectName("panelTitleBar");auto *row=new QHBoxLayout(bar);row->setContentsMargins(12,4,6,4);row->setSpacing(4);auto *title=new QLabel(dock->windowTitle());title->setAttribute(Qt::WA_TransparentForMouseEvents);title->setObjectName("caption");row->addWidget(title,1);QObject::connect(dock,&QDockWidget::windowTitleChanged,title,&QLabel::setText);
+    auto *detach=new QToolButton;detach->setAutoRaise(true);detach->setIcon(commandIcon("layout"));detach->setToolTip("Détacher ou rattacher ce panneau");detach->setAccessibleName(detach->toolTip());detach->setVisible(dock->features()&QDockWidget::DockWidgetFloatable);row->addWidget(detach);QObject::connect(detach,&QToolButton::clicked,dock,[dock]{dock->setFloating(!dock->isFloating());dock->show();});
+    auto *close=new QToolButton;close->setAutoRaise(true);close->setText("×");close->setToolTip("Masquer ce panneau");close->setAccessibleName(close->toolTip());close->setVisible(dock->features()&QDockWidget::DockWidgetClosable);row->addWidget(close);QObject::connect(close,&QToolButton::clicked,dock,&QWidget::hide);return bar;
+}
 QDockWidget *dock(QMainWindow *window, const QString &title, const QString &id, QWidget *content, Qt::DockWidgetArea area) {
     auto *d = new QDockWidget(title, window); d->setObjectName(id); d->setWidget(content);
     window->addDockWidget(area, d); return d;
@@ -48,6 +62,8 @@ QDockWidget *dock(QMainWindow *window, const QString &title, const QString &id, 
 
 MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(this), indexer(&runner,this), syncMonitor(this), pushCheck(this) {
     runner.setEnvironmentRemovals({"GH_TOKEN","GITHUB_TOKEN","GH_ENTERPRISE_TOKEN","GITHUB_ENTERPRISE_TOKEN"});
+    updater=new AppUpdater(this);
+    connect(updater,&AppUpdater::checked,this,[this](const AppUpdate &update,const QString &,bool manual){if(!manual&&update.available()){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}});
     setWindowTitle("GitHub Enhanced"); resize(1200, 780); setMinimumSize(860, 580);
     setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks);
     const bool migrated = settings.value("interfaceRevision", 0).toInt() >= 3;
@@ -77,11 +93,11 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(t
     connect(&pushCheck,&PushPreflight::output,operation,&OperationDialog::append);
     connect(&pushCheck,&PushPreflight::busyChanged,this,[this](bool){updateActions();});
     connect(&indexer,&RepositoryIndex::detail,this,[this](const QString &text){if(!operation->running())beginOperation("Préparation du commit");operation->step(text);});
-    connect(&repositoryTimer,&QTimer::timeout,this,[this]{if(isActiveWindow()&&!QApplication::activeModalWidget()&&!pushCheck.busy()&&!runner.busy()&&!github.busy()&&!indexer.busy()&&!refreshing&&!codex.generating())refresh();});
+    connect(&repositoryTimer,&QTimer::timeout,this,[this]{if(!property("installingUpdate").toBool()&&isActiveWindow()&&!QApplication::activeModalWidget()&&!pushCheck.busy()&&!runner.busy()&&!github.busy()&&!indexer.busy()&&!refreshing&&!codex.generating())refresh();});
     repositoryTimer.start(2500);
     connect(&syncMonitor,&RepositorySync::updated,this,&MainWindow::updateSyncStatus);
-    connect(&syncMonitor,&RepositorySync::busyChanged,this,[this](bool busy){verifyRemote->setEnabled(!busy&&!repository.isEmpty());verifyRemote->setText(busy?"Vérification…":"Vérifier le distant");updateActions();});
-    connect(&remoteTimer,&QTimer::timeout,this,[this]{if(!repository.isEmpty()&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!syncMonitor.busy())syncMonitor.inspect(repository,true);});remoteTimer.start(60000);
+    connect(&syncMonitor,&RepositorySync::busyChanged,this,[this](bool busy){verifyRemote->setEnabled(!busy&&!repository.isEmpty());verifyRemote->setText(busy?"Vérification…":"Vérifier le distant");if(syncToolbarAction){syncToolbarAction->setEnabled(!busy&&!repository.isEmpty()&&!runner.busy());if(busy)syncToolbarAction->setText("Fetch en cours…");else updateSyncStatus(syncState);}updateActions();});
+    connect(&remoteTimer,&QTimer::timeout,this,[this]{if(!property("installingUpdate").toBool()&&!QApplication::activeModalWidget()&&!repository.isEmpty()&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!syncMonitor.busy())syncMonitor.inspect(repository,true);});remoteTimer.start(60000);
     auto *activityButton=new QPushButton("Activité");activityButton->setObjectName("operationActivity");statusBar()->addPermanentWidget(activityButton);connect(activityButton,&QPushButton::clicked,operation,[this]{operation->show();operation->raise();});
     if (settings.value("interfaceRevision", 0).toInt() >= 2) {
         if (settings.contains("geometry")) restoreGeometry(settings.value("geometry").toByteArray());
@@ -145,9 +161,11 @@ void MainWindow::buildInterface() {
         auto *a = mainToolbar->addAction(style()->standardIcon(icon), name, this, [this, args, name] { if(args.value(0)=="push"&&QStringList{"ahead","noUpstream","localOnly"}.contains(syncState.kind))performSyncAction();else mutate(args, name); });
         identify(a, id, name); repoActions.append(a); return a;
     };
-    addRepo("Fetch", "tool-fetch", QStyle::SP_BrowserReload, {"fetch", "--prune"});
-    addRepo("Pull", "tool-pull", QStyle::SP_ArrowDown, {"pull", "--ff-only"});
-    addRepo("Push", "tool-push", QStyle::SP_ArrowUp, {"push"});
+    auto *legacyFetch=addRepo("Fetch", "tool-fetch", QStyle::SP_BrowserReload, {"fetch", "--prune"});
+    auto *legacyPull=addRepo("Pull", "tool-pull", QStyle::SP_ArrowDown, {"pull", "--ff-only"});
+    auto *legacyPush=addRepo("Push", "tool-push", QStyle::SP_ArrowUp, {"push"});
+    for(auto *legacy:{legacyFetch,legacyPull,legacyPush}){legacy->setVisible(false);legacy->setProperty("defaultVisible",false);}
+    syncToolbarAction=mainToolbar->addAction(commandIcon("fetch"),"Fetch origin",this,&MainWindow::performSyncAction);identify(syncToolbarAction,"tool-sync","Synchroniser le dépôt");
     refreshAction = mainToolbar->addAction("Actualiser", this, &MainWindow::refresh);
     refreshAction->setShortcut(QKeySequence::Refresh); repoActions.append(refreshAction);
     identify(refreshAction, "tool-refresh", "Actualiser"); refreshAction->setVisible(false);
@@ -255,6 +273,16 @@ void MainWindow::buildMenus() {
     fileMenu->addAction("Mes dépôts GitHub…",this,&MainWindow::browseGitHub);
     auto *preferences = fileMenu->addAction("Préférences…", QKeySequence::Preferences, this, &MainWindow::settingsDialog); preferences->setMenuRole(QAction::PreferencesRole);
     preferences->setObjectName("preferencesAction");
+    auto *colorsAction=fileMenu->addAction("Couleurs et palettes…",this,[this]{openSettings(true);});colorsAction->setObjectName("colorsSettingsAction");
+    auto *quick=new QWidget(menuBar());quick->setStyleSheet("QToolButton { padding: 2px 8px; min-height: 20px; }");auto *quickRow=new QHBoxLayout(quick);quickRow->setContentsMargins(0,0,6,0);quickRow->setSpacing(4);
+    auto *restoreToolbar=new MenuTextButton(quick);restoreToolbar->setObjectName("restoreToolbarButton");restoreToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);restoreToolbar->setText("Afficher la barre d’outils");restoreToolbar->setAutoRaise(true);restoreToolbar->setToolTip("Réafficher les commandes du dépôt");restoreToolbar->setAccessibleName(restoreToolbar->text());quickRow->addWidget(restoreToolbar);
+    connect(restoreToolbar,&QToolButton::clicked,this,[this]{bool any=false;for(auto *action:toolbarItems)any|=action->isVisible();if(!any)for(auto *action:toolbarItems)action->setVisible(action->property("defaultVisible").toBool());mainToolbar->show();mainToolbar->raise();saveLayoutSettings();});
+    connect(mainToolbar,&QToolBar::visibilityChanged,restoreToolbar,[restoreToolbar](bool visible){restoreToolbar->setVisible(!visible);});restoreToolbar->setVisible(mainToolbar->isHidden());QTimer::singleShot(0,this,[this,restoreToolbar]{restoreToolbar->setVisible(mainToolbar->isHidden());if(menuBar()->isNativeMenuBar()&&mainToolbar->isHidden())statusBar()->show();});
+    auto *colorsButton=new MenuTextButton(quick);colorsButton->setObjectName("colorsSettingsButton");colorsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);colorsButton->setText("Couleurs…");colorsButton->setAutoRaise(true);colorsButton->setToolTip("Modifier les couleurs et choisir une palette");colorsButton->setAccessibleName("Réglages des couleurs et palettes");quickRow->addWidget(colorsButton);connect(colorsButton,&QToolButton::clicked,colorsAction,&QAction::trigger);if(menuBar()->isNativeMenuBar()){quick->setParent(statusBar());statusBar()->addPermanentWidget(quick);connect(mainToolbar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible)statusBar()->show();});}else menuBar()->setCornerWidget(quick,Qt::TopRightCorner);
+    auto fitQuick=[this,quick,quickRow,restoreToolbar,colorsButton]{restoreToolbar->updateGeometry();colorsButton->updateGeometry();quickRow->invalidate();quick->adjustSize();quick->updateGeometry();if(!menuBar()->isNativeMenuBar())menuBar()->setCornerWidget(quick,Qt::TopRightCorner);};
+    connect(mainToolbar,&QToolBar::visibilityChanged,quick,[quick,fitQuick](bool){QTimer::singleShot(0,quick,fitQuick);});QTimer::singleShot(0,quick,fitQuick);
+
+
     fileMenu->addSeparator(); auto *quit = fileMenu->addAction("Quitter", QKeySequence::Quit, this, &QWidget::close); quit->setMenuRole(QAction::QuitRole);
     auto *edit = menuBar()->addMenu("&Édition");
     // Standard shortcuts still belong to each native text control.
@@ -274,6 +302,7 @@ void MainWindow::buildMenus() {
     auto add = [&](const QString &name, std::function<void()> callback, QKeySequence shortcut = {}) {
         auto *a = repoMenu->addAction(name, shortcut, this, std::move(callback)); repoActions.append(a);
     };
+    add("Fusionner une branche…",[this]{mergeBranches();});
     add("Nouvelle branche…", [this] { newBranch(); }, QKeySequence("Ctrl+Shift+N"));
     add("Publier ce dépôt sur GitHub…",[this]{publishRepository();});
     add("Réglages du dépôt…",[this]{repositorySettings();});
@@ -282,7 +311,7 @@ void MainWindow::buildMenus() {
     add("Générer un message avec Codex",[this]{generateMessage();});
     add("Publier la branche sur origin", [this] { mutate({"push", "--set-upstream", "origin", "HEAD"}, "Publication de la branche"); });
     add("Configurer origin…", [this] {
-        bool ok = false; auto url = QInputDialog::getText(this, "Dépôt distant origin", "URL HTTPS / SSH", QLineEdit::Normal, {}, &ok).trimmed();
+        bool ok = false; auto url = glassInputText(this, "Dépôt distant origin", "URL HTTPS / SSH", QLineEdit::Normal, {}, &ok).trimmed();
         if (!ok || url.isEmpty() || url.startsWith('-') || runner.busy()) return;
         runGit({"remote", "get-url", "origin"}, [this, url](const CommandResult &r) {
             runGit(r.ok() ? QStringList{"remote", "set-url", "origin", url} : QStringList{"remote", "add", "origin", url}, [this](const CommandResult &result) {
@@ -298,6 +327,7 @@ void MainWindow::buildMenus() {
     auto *view = menuBar()->addMenu("&Affichage");
     for (auto *d : layoutPanels()) view->addAction(d->toggleViewAction());
     view->addAction(toolbar->toggleViewAction());
+    toolbar->toggleViewAction()->setShortcut(QKeySequence("Ctrl+Shift+T"));
     view->addSeparator();
     auto *advanced = view->addAction("Mode avancé · détails techniques");
     advanced->setObjectName("advancedModeAction"); advanced->setCheckable(true); advanced->setChecked(Diagnostics::advanced());
@@ -307,15 +337,16 @@ void MainWindow::buildMenus() {
     lockAction = view->addAction("Verrouiller la disposition"); lockAction->setCheckable(true); lockAction->setChecked(true);
     connect(lockAction, &QAction::toggled, this, [this](bool locked) { setLayoutEditing(!locked); });
     view->addAction("Enregistrer la disposition…", this, [this] {
-        bool ok = false; auto name = QInputDialog::getText(this, "Disposition", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
+        bool ok = false; auto name = glassInputText(this, "Disposition", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
         if (ok && !name.isEmpty() && name.size() <= 64 && !name.contains('/') && !name.contains('\\')) { settings.setValue("layouts/" + name, QJsonDocument(layoutConfiguration()).toJson(QJsonDocument::Compact)); rebuildLayouts(); }
     });
     layoutsMenu = view->addMenu("Dispositions enregistrées"); rebuildLayouts();
     view->addAction("Rétablir la disposition initiale", this, [this] { resetLayout(); });
     view->addAction("Plein écran", QKeySequence::FullScreen, this, [this] { isFullScreen() ? showNormal() : showFullScreen(); });
     auto *help = menuBar()->addMenu("&Aide");
+    help->addAction("Rechercher des mises à jour…",this,[this]{checkUpdates(true);});
     help->addAction("À propos de GitHub Enhanced", this, [this] {
-        QMessageBox::about(this, "GitHub Enhanced", "GitHub Enhanced 0.1.0 — aperçu\nClient Git indépendant, écrit en C++ et Qt 6.\nNon affilié à GitHub.\n\nGit doit être installé et configuré. GitHub CLI est facultatif pour la synchronisation.\nLa parité complète avec GitHub Desktop et la marketplace publique restent en développement.");
+        QMessageBox::about(this, "GitHub Enhanced", "GitHub Enhanced "+QCoreApplication::applicationVersion()+" — aperçu\nClient Git indépendant, écrit en C++ et Qt 6.\nNon affilié à GitHub.\n\nGit doit être installé et configuré. GitHub CLI est facultatif pour la synchronisation.\nLa parité complète avec GitHub Desktop et la marketplace publique restent en développement.");
     })->setMenuRole(QAction::AboutRole);
     const QList<QPair<QString, QString>> optionalCommands{
         {"tool-new-branch", "Nouvelle branche…"}, {"tool-publish", "Publier la branche sur origin"},
@@ -446,23 +477,25 @@ void MainWindow::refreshViews() {
 }
 
 void MainWindow::updateActions() {
-    bool enabled = !repository.isEmpty() && !runner.busy() && !indexer.busy() && !github.busy() && !pushCheck.busy();
+    bool enabled = !property("installingUpdate").toBool() && !repository.isEmpty() && !runner.busy() && !indexer.busy() && !github.busy() && !pushCheck.busy();
     for (auto *a : repoActions) a->setEnabled(enabled&&(!QStringList{"Push","Pull","Fetch"}.contains(a->text())||!syncMonitor.busy()));
     branches->setEnabled(enabled); commitDock->widget()->setEnabled(enabled); changesDock->widget()->setEnabled(enabled);
     repositories->setEnabled(!runner.busy());
     syncAction->setEnabled(enabled&&!syncMonitor.busy());
+    if(syncToolbarAction)syncToolbarAction->setEnabled(enabled&&!syncMonitor.busy()&&!QStringList{"unborn","detached"}.contains(syncState.kind));
 }
 
 void MainWindow::updateSyncStatus(const RepositorySyncState &state){
     if(state.repository!=repository)return;
     if(!state.error.isEmpty()&&state.error!=syncState.error)log("Vérification du distant :\n"+state.error);
     syncState=state;
+    for(auto *panel:customPanels)panel->updateRepository(state);
     auto commits=[](int count){return QString::number(count)+(count==1?" commit":" commits");};
     QString message="Branche "+state.branch;QString action;
     if(!state.error.isEmpty()){message+=" · État distant non vérifié\n"+Diagnostics::explain(state.error).text();action="Réessayer";}
     else if(state.kind=="ahead"){message+=QString(" · %1 à envoyer vers %2").arg(commits(state.ahead),state.upstream);action="Envoyer "+commits(state.ahead);}
     else if(state.kind=="behind"){message+=QString(" · %1 à récupérer depuis %2").arg(commits(state.behind),state.upstream);action="Récupérer "+commits(state.behind);}
-    else if(state.kind=="diverged"){message+=QString(" · %1 à envoyer, %2 à récupérer · branches divergentes").arg(commits(state.ahead),commits(state.behind));action="Voir les écarts";}
+    else if(state.kind=="diverged"){message+=QString(" · %1 à envoyer, %2 à récupérer · branches divergentes").arg(commits(state.ahead),commits(state.behind));action="Fusionner les branches…";}
     else if(state.kind=="synced"){
         if(!localStatusKnown)message+=" · Commits alignés · état des fichiers locaux non vérifié";
         else if(!indexError.isEmpty())message+=" · Commits alignés · préparation locale interrompue";
@@ -475,6 +508,16 @@ void MainWindow::updateSyncStatus(const RepositorySyncState &state){
     else if(state.kind=="detached")message="HEAD détachée · sélectionnez une branche pour la synchroniser";
     else message+=" · État distant inconnu";
     if(!state.remote.isEmpty()&&state.error.isEmpty())message+=state.checkedAt.isValid()?"\nDistant vérifié à "+state.checkedAt.toString("HH:mm:ss"):"\nDistant non vérifié · comparaison avec les références en cache";
+    if(syncToolbarAction&&!syncMonitor.busy()){
+        auto remote=state.remote.isEmpty()?"origin":state.remote;QString title="Fetch "+remote,icon="fetch";
+        if(state.kind=="ahead"){title="Push "+remote+" · "+QString::number(state.ahead);icon="push";}
+        else if(state.kind=="behind"){title="Pull "+remote+" · "+QString::number(state.behind);icon="pull";}
+        else if(state.kind=="diverged")title="Fusionner · "+remote;
+        else if(state.kind=="localOnly")title="Publier sur GitHub…";
+        else if(state.kind=="noUpstream")title="Publier la branche";
+        if(!state.error.isEmpty())title="Réessayer Fetch "+remote;
+        syncToolbarAction->setText(title);syncToolbarAction->setIcon(commandIcon(icon));syncToolbarAction->setToolTip(message);
+    }
     syncStatus->setText(message);syncStatus->setToolTip("Dossier : "+repository+"\nBranche locale : "+state.branch+"\nSuivi : "+state.upstream+(Diagnostics::advanced()&&!state.error.isEmpty()?"\n\nDétails techniques :\n"+state.error:QString()));syncAction->setText(action);syncAction->setVisible(!action.isEmpty());updateActions();
 }
 void MainWindow::performSyncAction(){
@@ -490,10 +533,10 @@ void MainWindow::performSyncAction(){
             QTimer::singleShot(0,this,[this,expected]{
                 if(repository!=expected.repository||runner.busy()||indexer.busy())return;
                 if(expected.kind=="ahead")mutate({"push","--",expected.remote,expected.head+":"+expected.remoteRef},"Envoi des commits");
-                else if(expected.kind=="behind")mutate({"pull","--ff-only"},"Récupération des commits");
+                else if(expected.kind=="behind")mutate({"pull","--ff-only","--",expected.remote,expected.remoteRef},"Récupération des commits");
                 else if(expected.kind=="noUpstream")mutate({"push","--set-upstream","--",expected.remote,expected.branch},"Publication de la branche");
                 else if(expected.kind=="localOnly")publishRepository();
-                else if(expected.kind=="diverged")showSyncDetails();
+                else if(expected.kind=="diverged")mergeBranches();
                 else syncMonitor.inspect(repository,true);
             });
         });
@@ -501,7 +544,7 @@ void MainWindow::performSyncAction(){
 }
 void MainWindow::showSyncDetails(){
     GlassDialog dialog(this);dialog.setWindowTitle("Écarts entre les branches");dialog.resize(760,520);auto *root=new QVBoxLayout(&dialog);root->setContentsMargins(24,24,24,24);auto *title=new QLabel("Branches divergentes");title->setObjectName("pageTitle");root->addWidget(title);
-    auto *hint=new QLabel("Les deux branches contiennent des commits différents. Une fusion ou un rebase doit être préparé dans votre outil Git. Aucun envoi forcé ni remplacement des fichiers n’est effectué.");hint->setWordWrap(true);root->addWidget(hint);
+    auto *hint=new QLabel("Les deux branches contiennent des commits différents. Vous pouvez les fusionner depuis Dépôt → Fusionner une branche… Les commits des deux branches seront conservés.");hint->setWordWrap(true);root->addWidget(hint);
     auto *text=new QPlainTextEdit;text->setReadOnly(true);text->setPlainText("Lecture des écarts…");root->addWidget(text,1);auto *commands=new CommandRunner(&dialog);commands->run("git",{"log","--left-right","--graph","--oneline","-n","100","HEAD..."+syncState.upstream,"--"},repository,[text](const CommandResult &r){text->setPlainText(r.ok()?"< commit local · > commit distant\n\n"+QString::fromUtf8(r.output):r.message());});auto *close=new QPushButton("Fermer");root->addWidget(close,0,Qt::AlignRight);connect(close,&QPushButton::clicked,&dialog,&QDialog::accept);dialog.exec();
 }
 
@@ -687,7 +730,7 @@ void MainWindow::showText(const QString &text) {
 
 void MainWindow::cloneRepository() {
     if (runner.busy()) return;
-    bool ok = false; auto url = QInputDialog::getText(this, "Cloner un dépôt", "URL HTTPS / SSH ou chemin du dépôt", QLineEdit::Normal, {}, &ok).trimmed();
+    bool ok = false; auto url = glassInputText(this, "Cloner un dépôt", "URL HTTPS / SSH ou chemin du dépôt", QLineEdit::Normal, {}, &ok).trimmed();
     if (!ok || url.isEmpty() || url.startsWith('-')) return;
     cloneUrl(url);
 }
@@ -696,7 +739,7 @@ void MainWindow::cloneUrl(const QString &url, const QString &suggestedName) {
     if (runner.busy() || url.isEmpty() || url.startsWith('-')) return;
     bool ok = false;
     const auto parent = QFileDialog::getExistingDirectory(this, "Dossier parent du clone"); if (parent.isEmpty()) return;
-    auto name = QInputDialog::getText(this, "Nom du dossier", "Nouveau dossier", QLineEdit::Normal, suggestedName.isEmpty() ? "mon-depot" : suggestedName, &ok).trimmed();
+    auto name = glassInputText(this, "Nom du dossier", "Nouveau dossier", QLineEdit::Normal, suggestedName.isEmpty() ? "mon-depot" : suggestedName, &ok).trimmed();
     if (!ok || name.isEmpty() || name == "." || name == ".." || name.contains('/') || name.contains('\\')) return;
     auto destination = QDir(parent).absoluteFilePath(name);
     if (QFileInfo::exists(destination)) { QMessageBox::warning(this, "Cloner", "Le dossier existe déjà. Choisissez un nouveau nom."); return; }
@@ -805,7 +848,7 @@ void MainWindow::initRepository() {
 
 void MainWindow::newBranch() {
     if (repository.isEmpty() || runner.busy()) return;
-    bool ok = false; auto name = QInputDialog::getText(this, "Nouvelle branche", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
+    bool ok = false; auto name = glassInputText(this, "Nouvelle branche", "Nom", QLineEdit::Normal, {}, &ok).trimmed();
     if (!ok || name.isEmpty()) return;
     beginOperation("Création de la branche");
     runGit({"check-ref-format", "--branch", name}, [this, name](const CommandResult &r) {
@@ -822,7 +865,7 @@ void MainWindow::log(const QString &message) {
 }
 
 QList<QDockWidget *> MainWindow::layoutPanels() const {
-    return {changesDock, historyDock, commitDock, diffDock, repositoryDock, activityDock};
+    QList<QDockWidget *> panels{changesDock, historyDock, commitDock, diffDock, repositoryDock, activityDock};for(auto *panel:customPanels)panels.append(panel);return panels;
 }
 
 void MainWindow::setLayoutEditing(bool editing) {
@@ -830,7 +873,7 @@ void MainWindow::setLayoutEditing(bool editing) {
     for (auto *d : layoutPanels()) {
         d->setFeatures(editing ? QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable : QDockWidget::NoDockWidgetFeatures);
         auto *previous = d->titleBarWidget();
-        if (editing || d->isFloating()) d->setTitleBarWidget(nullptr);
+        if (editing || d->isFloating()) d->setTitleBarWidget(dockHeader(d));
         else { auto *empty = new QWidget(d); empty->setFixedHeight(0); d->setTitleBarWidget(empty); }
         if (previous && previous != d->titleBarWidget()) previous->deleteLater();
     }
@@ -867,7 +910,8 @@ void MainWindow::resetLayout(const QString &preset) {
 QJsonObject MainWindow::layoutConfiguration() const {
     QJsonArray tools;
     for (auto *action : mainToolbar->actions()) tools.append(QJsonObject{{"id", action->objectName()}, {"visible", action->isVisible()}});
-    return {{"version", 1}, {"layoutVersion", 2}, {"layout", QString::fromLatin1(saveState(2).toBase64())},
+    QJsonArray custom;for(auto *panel:customPanels)custom.append(panel->definition());
+    return {{"customPanels",custom},{"version", 1}, {"layoutVersion", 2}, {"layout", QString::fromLatin1(saveState(2).toBase64())},
         {"toolbar", tools}, {"toolbarStyle", int(mainToolbar->toolButtonStyle())}, {"locked", !layoutEditing}, {"statusBar", !statusBar()->isHidden()}};
 }
 
@@ -889,9 +933,11 @@ bool MainWindow::applyLayoutConfiguration(const QJsonObject &p) {
     const auto encoded = p["layout"].toString();
     if (p["version"].toInt() != 1 || encoded.isEmpty() || encoded.size() > 131072 || p["toolbar"].toArray().size() > 64) return false;
     const auto state = QByteArray::fromBase64(encoded.toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
-    if (state.isEmpty()) return false;
+    if (state.isEmpty()||(p.contains("customPanels")&&!p["customPanels"].isArray())||!CustomPanel::validate(p["customPanels"].toArray())) return false;
+    const auto oldCustom=layoutConfiguration()["customPanels"].toArray();
     const auto backup = saveState(2);
-    if (!restoreState(state, p["layoutVersion"].toInt(1))) { restoreState(backup, 2); return false; }
+    restoreCustomPanels(p["customPanels"].toArray());
+    if (!restoreState(state, p["layoutVersion"].toInt(1))) { restoreCustomPanels(oldCustom);restoreState(backup, 2); return false; }
     if (p["toolbar"].isArray()) applyToolbarConfiguration(p["toolbar"].toArray());
     const int style = p["toolbarStyle"].toInt(int(Qt::ToolButtonTextBesideIcon));
     if (style >= Qt::ToolButtonIconOnly && style <= Qt::ToolButtonFollowStyle) mainToolbar->setToolButtonStyle(Qt::ToolButtonStyle(style));
@@ -937,20 +983,55 @@ void MainWindow::applyProfile(const QJsonObject &p) {
     Theme::apply(activeTheme, native, fontSize); applyLayoutConfiguration(p); saveLayoutSettings(); showDiff();
     repositorySelector->setIcon(commandIcon("repository"));
     for (auto *action : toolbarItems) if (!qobject_cast<QWidgetAction *>(action)) action->setIcon(commandIcon(action->objectName().mid(5)));
+    if(!repository.isEmpty())updateSyncStatus(syncState);
 }
 
-void MainWindow::settingsDialog() {
+void MainWindow::settingsDialog() { openSettings(false); }
+
+void MainWindow::openSettings(bool colors) {
     SettingsDialog dialog(profile(), this, &github, &codex); connect(&dialog, &SettingsDialog::profileDownloaded, this, &MainWindow::applyProfile);
     connect(&dialog, &SettingsDialog::appearancePreviewRequested, this, &MainWindow::previewAppearance);
     connect(&dialog, &SettingsDialog::repositoriesRequested, this, [this] { QTimer::singleShot(0, this, &MainWindow::browseGitHub); });
-    connect(&dialog, &SettingsDialog::layoutEditorRequested, this, [this] { QTimer::singleShot(0, this, &MainWindow::editLayout); }); dialog.exec();
+    connect(&dialog, &SettingsDialog::layoutEditorRequested, this, [this] { QTimer::singleShot(0, this, &MainWindow::editLayout); }); if(colors)dialog.showColors();dialog.exec();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (runner.busy() || indexer.busy() || github.busy() || pushCheck.busy()) {
-        QMessageBox::information(this, "Opération en cours", "Attendez la fin de l’opération Git avant de fermer l’application."); event->ignore(); return;
+    if (property("installingUpdate").toBool() || runner.busy() || indexer.busy() || github.busy() || pushCheck.busy()) {
+        QMessageBox::information(this, "Opération en cours", "Attendez la fin de l’opération en cours avant de fermer l’application."); event->ignore(); return;
     }
     codex.cancelGeneration();
     for (auto *editor : findChildren<LayoutDialog *>()) if (editor->isVisible()) editor->reject();
     settings.setValue("geometry", saveGeometry()); saveLayoutSettings(); event->accept();
 }
+
+void MainWindow::restoreCustomPanels(const QJsonArray &definitions){
+    for(auto *panel:customPanels){removeDockWidget(panel);delete panel;}customPanels.clear();
+    for(const auto &value:definitions){auto *panel=new CustomPanel(value.toObject(),this);customPanels.append(panel);addDockWidget(Qt::RightDockWidgetArea,panel);panel->show();panel->updateRepository(syncState);connect(panel,&CustomPanel::contentChanged,this,[this]{saveLayoutSettings();});}
+}
+
+void MainWindow::checkUpdates(bool manual){
+    if(manual){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}updater->check(manual);
+}
+void MainWindow::installUpdate(const QString &file){
+    if(runner.busy()||indexer.busy()||github.busy()||pushCheck.busy()||codex.generating()){Diagnostics::showError(this,"Mise à jour","Une opération est en cours. Attendez sa fin avant d’installer la mise à jour.");return;}
+#ifdef Q_OS_LINUX
+    const auto image=qEnvironmentVariable("APPIMAGE");
+    if(image.isEmpty()){QDesktopServices::openUrl(updater->available().releaseUrl);return;}
+    if(property("installingUpdate").toBool())return;
+    setProperty("installingUpdate",true);updateActions();beginOperation("Installation de la mise à jour");operation->step("Vérification, sauvegarde et remplacement de l’AppImage…");
+    auto outcome=std::make_shared<QPair<bool,QString>>();const auto expectedHash=updater->available().sha256;
+    auto *worker=QThread::create([outcome,image,file,expectedHash]{outcome->first=AppUpdater::replaceAppImage(image,file,expectedHash,&outcome->second);});
+    connect(worker,&QThread::finished,this,[this,outcome,image]{setProperty("installingUpdate",false);updateActions();if(!outcome->first){operation->finish(false,outcome->second);return;}operation->finish(true,"La mise à jour a été installée.");
+    GlassDialog restart(this);restart.setWindowTitle("Mise à jour installée");auto *layout=new QVBoxLayout(&restart);layout->setContentsMargins(24,24,24,24);auto *label=new QLabel("La nouvelle version est installée. Une sauvegarde .previous a été conservée. Redémarrez pour l’utiliser.");label->setWordWrap(true);layout->addWidget(label);auto *buttons=new QDialogButtonBox;buttons->addButton("Plus tard",QDialogButtonBox::RejectRole);auto *now=buttons->addButton("Redémarrer",QDialogButtonBox::AcceptRole);layout->addWidget(buttons);connect(now,&QPushButton::clicked,&restart,&QDialog::accept);connect(buttons,&QDialogButtonBox::rejected,&restart,&QDialog::reject);
+    if(restart.exec()==QDialog::Accepted){if(runner.busy()||indexer.busy()||github.busy()||pushCheck.busy()){statusBar()->showMessage("Redémarrez après la fin de l’opération en cours.");return;}auto env=QProcessEnvironment::systemEnvironment();for(const auto &key:{"APPIMAGE","APPDIR","LD_LIBRARY_PATH","QT_PLUGIN_PATH","QT_QPA_PLATFORM_PLUGIN_PATH"})env.remove(key);QProcess next;next.setProcessEnvironment(env);next.setProgram(image);if(next.startDetached())close();else Diagnostics::showError(this,"Redémarrage","Impossible de relancer l’application. Fermez-la puis ouvrez la nouvelle AppImage.");}
+    });connect(worker,&QThread::finished,worker,&QObject::deleteLater);worker->start();
+#else
+    QFile input(file);QCryptographicHash digest(QCryptographicHash::Sha256);if(!input.open(QIODevice::ReadOnly)||!digest.addData(&input)||digest.result().toHex()!=updater->available().sha256.toLatin1()){Diagnostics::showError(this,"Installation","La mise à jour a changé depuis sa vérification. Téléchargez-la à nouveau.");return;}
+    if(!QDesktopServices::openUrl(QUrl::fromLocalFile(file)))Diagnostics::showError(this,"Installation","Impossible d’ouvrir le paquet téléchargé. Ouvrez-le depuis votre dossier de cache.");
+#ifdef Q_OS_WIN
+    else close();
+#endif
+#endif
+}
+
+void MainWindow::mergeBranches(){if(repository.isEmpty()||runner.busy()||indexer.busy()||pushCheck.busy())return;MergeDialog dialog(repository,syncState.upstream,this);dialog.exec();refresh();syncMonitor.inspect(repository,true);}

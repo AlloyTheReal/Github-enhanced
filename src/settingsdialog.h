@@ -22,6 +22,7 @@ class SettingsDialog : public GlassDialog {
   public:
     explicit SettingsDialog(const QJsonObject &profile, QWidget *parent = nullptr,
                             GitHubClient *github = nullptr, CodexClient *codex = nullptr);
+    void showColors() { navigate(1); }
   signals:
     void profileDownloaded(const QJsonObject &profile);
     void layoutEditorRequested();

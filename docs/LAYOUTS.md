@@ -37,3 +37,13 @@ Le menu **Affichage → Verrouiller la disposition** permet aussi de manipuler l
 Les dispositions de l’ancienne interface peuvent nécessiter un nouvel enregistrement. Cette personnalisation porte sur les vues et les commandes ; l’ordre des champs à l’intérieur du formulaire de commit et les raccourcis individuels ne sont pas encore éditables.
 
 Dans **Préférences → Couleurs**, l’aperçu en direct applique les modifications à la fenêtre principale. **Annuler** restaure l’apparence initiale ; l’interrupteur d’aperçu permet de suspendre ces changements temporaires.
+
+## Panneaux personnalisés
+
+Dans **Personnaliser l’interface → Panneaux → Créer…**, choisissez un nom et un type : notes libres, liste de tâches ou état du dépôt. Les notes et tâches sont modifiables directement dans le panneau ; l’état du dépôt suit la branche sélectionnée. Vous pouvez créer jusqu’à 16 panneaux, les déplacer, redimensionner, détacher, empiler en onglets, masquer, renommer ou retirer depuis l’éditeur.
+
+Les panneaux, leur contenu et leur disposition sont enregistrés dans le profil. Annuler/rétablir dans l’éditeur s’applique aussi à leur création ou suppression. **Annuler** rétablit la disposition d’avant l’ouverture. Les profils peuvent être exportés/importés ; la validation refuse les types inconnus, les identifiants dupliqués et les contenus excessifs. Les notes sont limitées à 64 K caractères, et les listes à 200 tâches.
+
+La synchronisation volontaire des préférences dans un Gist inclut le contenu des panneaux personnalisés. Ce contenu n’est pas écrit dans les fichiers du dépôt.
+
+Si la barre d’outils est masquée, **Afficher la barre d’outils** apparaît dans la barre de menus (ou la barre d’état avec les menus système). Le menu **Affichage → Barre d’outils** et le raccourci **Ctrl+Maj+T** permettent aussi de la basculer.
