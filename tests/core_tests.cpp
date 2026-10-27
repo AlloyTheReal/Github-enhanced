@@ -21,7 +21,18 @@ int main(int argc, char **argv) {
     CommandRunner runner;
     auto execute = [&](const QString &program, const QStringList &args, const QString &cwd) {
         QEventLoop loop; CommandResult result;
-        runner.run(program, args, cwd, [&](const CommandResult &r) { result = r; loop.quit(); });
+        bool returned = false;
+        QTimer watchdog; watchdog.setSingleShot(true);
+        QObject::connect(&watchdog, &QTimer::timeout, &loop, [&] {
+            check(false, "Command callback did not arrive: " + program + " " + args.join(' '));
+        });
+        watchdog.start(30000);
+        runner.run(program, args, cwd, [&](const CommandResult &r) {
+            check(returned, "Command callback must be asynchronous: " + program);
+            result = r; loop.quit();
+        });
+        check(runner.busy(), "Runner is busy immediately after enqueueing");
+        returned = true;
         loop.exec(); return result;
     };
     QTemporaryDir temporary; check(temporary.isValid(), "Temporary directory");

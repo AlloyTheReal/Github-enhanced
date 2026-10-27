@@ -16,7 +16,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build qt6-base-dev qt6-base-dev-tools qt6-svg-dev qt6-wayland libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 rpm patchelf desktop-file-utils
       - run: cmake --preset release
       - run: cmake --build --preset release --parallel 2
-      - run: ctest --preset release
+      - run: ctest --preset release --output-junit test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ runner.os }}
+          path: |
+            build/release/test-results.xml
+            build/release/Testing/Temporary/LastTest.log
       - name: Application startup
         run: QT_QPA_PLATFORM=offscreen build/release/github-enhanced --smoke-test
       - name: Native packages
@@ -26,6 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
+          if-no-files-found: error
           path: |
             dist/*.AppImage
             dist/*.deb
@@ -49,7 +57,14 @@ jobs:
           wix extension add --global WixToolset.UI.wixext/4.0.6
       - run: cmake --preset release
       - run: cmake --build --preset release --parallel 2
-      - run: ctest --preset release
+      - run: ctest --preset release --output-junit test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ runner.os }}
+          path: |
+            build/release/test-results.xml
+            build/release/Testing/Temporary/LastTest.log
       - name: Application startup
         run: build/release/github-enhanced.exe --smoke-test
       - name: EXE and MSI
@@ -60,6 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x86_64
+          if-no-files-found: error
           path: |
             dist/*.exe
             dist/*.msi
@@ -74,15 +90,32 @@ jobs:
       - name: Configure universal app
         run: cmake --preset release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
       - run: cmake --build --preset release --parallel 2
-      - run: ctest --preset release
+      - run: ctest --preset release --output-junit test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ runner.os }}
+          path: |
+            build/release/test-results.xml
+            build/release/Testing/Temporary/LastTest.log
       - run: build/release/github-enhanced.app/Contents/MacOS/github-enhanced --smoke-test
       - name: DMG
-        run: cpack --config build/release/CPackConfig.cmake -G DragNDrop -B dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cpack --config build/release/CPackConfig.cmake -G DragNDrop -B dist 2>&1 | tee "$RUNNER_TEMP/dmg.log"; then
+              exit 0
+            fi
+            # Retry only the transient disk-image locking failure.
+            if ! grep -q "Resource busy" "$RUNNER_TEMP/dmg.log" || [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep 10
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: macos-universal
+          if-no-files-found: error
           path: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
-            dist/*.tar.gz.dmg
+            dist/*.dmg

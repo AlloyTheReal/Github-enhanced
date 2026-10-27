@@ -66,8 +66,13 @@ void CommandRunner::next() {
     process.setWorkingDirectory(current.directory);
     emit busyChanged(true);
     emit commandStarted(current.program, current.args);
-    process.start(current.program, current.args);
-    timeout.start(current.timeoutMilliseconds > 0 ? current.timeoutMilliseconds : current.args.contains("clone") || current.args.contains("push") || current.args.contains("fetch") || current.args.contains("pull") || current.args.contains("add") ? 1800000 : 120000);
+    // Keep busy() true immediately, but defer process startup. On Windows a
+    // FailedToStart signal can otherwise invoke the callback before run()
+    // returns, before callers have entered their local event loop.
+    QTimer::singleShot(0, this, [this] {
+        timeout.start(current.timeoutMilliseconds > 0 ? current.timeoutMilliseconds : current.args.contains("clone") || current.args.contains("push") || current.args.contains("fetch") || current.args.contains("pull") || current.args.contains("add") ? 1800000 : 120000);
+        process.start(current.program, current.args);
+    });
 }
 
 void CommandRunner::drain() {
