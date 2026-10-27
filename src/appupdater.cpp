@@ -159,10 +159,37 @@ void AppUpdater::check(bool manual) {
         }
         if (reply->error() != QNetworkReply::NoError ||
             bytes->size() > 2097152) {
-          emit checked({},
-                       "La recherche de mise à jour a échoué. Vérifiez votre "
-                       "connexion ou réessayez plus tard.",
-                       manual);
+          const auto http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+          const auto apiMessage = QJsonDocument::fromJson(*bytes).object()["message"].toString().left(1000);
+          QString reason;
+          if (bytes->size() > 2097152)
+            reason = "La réponse de GitHub est trop volumineuse. Réessayez plus tard.";
+          else if (http == 429 || (http == 403 &&
+                   (reply->rawHeader("X-RateLimit-Remaining") == "0" ||
+                    apiMessage.contains("rate limit", Qt::CaseInsensitive)))) {
+            reason = "GitHub limite temporairement les recherches de mises à jour. Réessayez plus tard.";
+            bool validReset = false;
+            const auto reset = reply->rawHeader("X-RateLimit-Reset").toLongLong(&validReset);
+            if (validReset)
+              reason += " Nouvelle tentative possible après " +
+                  QDateTime::fromSecsSinceEpoch(reset).toLocalTime().toString("dd/MM/yyyy HH:mm") + ".";
+          } else if (!QSslSocket::supportsSsl())
+            reason = "Le composant HTTPS de l’application ne fonctionne pas. Réinstallez l’application depuis la release GitHub.";
+          else if (reply->error() == QNetworkReply::SslHandshakeFailedError)
+            reason = "La connexion sécurisée à GitHub a échoué. Vérifiez les certificats, l’heure du système et le proxy.";
+          else if (reply->error() == QNetworkReply::TimeoutError ||
+                   reply->error() == QNetworkReply::OperationCanceledError)
+            reason = "La recherche de mise à jour a expiré. Vérifiez la connexion et réessayez.";
+          else if (http >= 500)
+            reason = "GitHub est temporairement indisponible. Réessayez plus tard.";
+          else if (http == 401 || http == 403)
+            reason = "GitHub refuse l’accès aux mises à jour. Vérifiez l’accès au dépôt et la configuration du proxy.";
+          else
+            reason = "La connexion à GitHub a échoué. Vérifiez votre connexion et votre proxy, puis réessayez.";
+          const auto details = QString("URL : %1\nHTTP %2 — %3 (Qt %4)\n%5")
+              .arg(reply->url().toString()).arg(http).arg(reply->errorString())
+              .arg(int(reply->error())).arg(apiMessage).trimmed();
+          emit checked({}, "La recherche de mise à jour a échoué. " + reason + "\n" + details, manual);
           return;
         }
         QJsonParseError parse;

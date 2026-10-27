@@ -50,7 +50,22 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
 export PATH="$tools_dir:$PATH"
 export OUTPUT="$source_dir/dist/.GitHub-Enhanced-x86_64.new.AppImage"
-"$tools_dir/linuxdeploy-x86_64.AppImage" --appdir "$app_dir" --plugin qt --output appimage
+# Qt loads OpenSSL dynamically: linuxdeploy cannot discover libssl through
+# ELF dependencies. Bundle the matching pair to avoid mixing bundled crypto
+# with the host's (potentially newer) SSL library.
+openssl_libraries=()
+for library in libssl.so.3 libcrypto.so.3; do
+  library_path="$("${CXX:-c++}" -print-file-name="$library")"
+  if [[ ! -f "$library_path" ]]; then
+    echo "Bibliothèque OpenSSL introuvable : $library" >&2
+    exit 1
+  fi
+  openssl_libraries+=(--library "$library_path")
+done
+"$tools_dir/linuxdeploy-x86_64.AppImage" --appdir "$app_dir" "${openssl_libraries[@]}" --plugin qt --output appimage
+for library in libssl.so.3 libcrypto.so.3; do
+  [[ -f "$app_dir/usr/lib/$library" ]] || { echo "Bibliothèque absente du paquet : $library" >&2; exit 1; }
+done
 
 # Remplacer le fichier atomiquement, même si une ancienne version est montée.
 mv -f -- "$OUTPUT" "$source_dir/dist/GitHub-Enhanced-x86_64.AppImage"

@@ -57,7 +57,7 @@ static QList<QJsonObject> records(const QString &path) {
 class MemoryUpdateReply : public QNetworkReply {
     QByteArray bytes; qint64 offset=0;
 public:
-    MemoryUpdateReply(const QNetworkRequest &request,const QByteArray &data,QObject *parent):QNetworkReply(parent),bytes(data){setRequest(request);setUrl(request.url());setAttribute(QNetworkRequest::HttpStatusCodeAttribute,200);open(QIODevice::ReadOnly|QIODevice::Unbuffered);QTimer::singleShot(0,this,[this]{emit readyRead();setFinished(true);emit finished();});}
+    MemoryUpdateReply(const QNetworkRequest &request,const QByteArray &data,QObject *parent,int http=200,NetworkError failure=NoError):QNetworkReply(parent),bytes(data){setRequest(request);setUrl(request.url());setAttribute(QNetworkRequest::HttpStatusCodeAttribute,http);if(http==403)setRawHeader("X-RateLimit-Remaining","0");open(QIODevice::ReadOnly|QIODevice::Unbuffered);QTimer::singleShot(0,this,[this,failure]{if(failure!=NoError)setError(failure,"test network failure");emit readyRead();setFinished(true);emit finished();});}
     void abort()override{setError(QNetworkReply::OperationCanceledError,"cancelled");}
     qint64 bytesAvailable()const override{return bytes.size()-offset+QNetworkReply::bytesAvailable();}
 protected:
@@ -66,8 +66,9 @@ protected:
 class UpdateTransport : public QNetworkAccessManager {
 public:
     QByteArray release,binary="verified update fixture";
+    int http=200;QNetworkReply::NetworkError failure=QNetworkReply::NoError;
 protected:
-    QNetworkReply *createRequest(Operation,const QNetworkRequest &request,QIODevice *)override{return new MemoryUpdateReply(request,request.url().path().endsWith("/releases/latest")?release:binary,this);}
+    QNetworkReply *createRequest(Operation,const QNetworkRequest &request,QIODevice *)override{return new MemoryUpdateReply(request,request.url().path().endsWith("/releases/latest")?release:binary,this,http,failure);}
 };
 
 class IntegrationTests : public QObject {
@@ -154,6 +155,27 @@ class IntegrationTests : public QObject {
         QTemporaryDir files;const auto target=files.filePath("GitHub-Enhanced.AppImage"),source=files.filePath("new.AppImage");auto write=[](const QString &path,const QByteArray &bytes){QFile f(path);return f.open(QIODevice::WriteOnly)&&f.write(bytes)==bytes.size();};
         QVERIFY(write(target,"old executable"));QVERIFY(write(source,image));QVERIFY2(AppUpdater::replaceAppImage(target,source,hash,&error),qPrintable(error));QFile current(target),backup(target+".previous");QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(backup.open(QIODevice::ReadOnly));QCOMPARE(backup.readAll(),QByteArray("old executable"));backup.close();
         QVERIFY(write(source,image+"tampered"));QVERIFY(!AppUpdater::replaceAppImage(target,source,hash,&error));QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(!AppUpdater::replaceAppImage(files.filePath("package.deb"),source,hash,&error));
+    }
+    void updateSearchErrors_data(){
+        QTest::addColumn<int>("http");QTest::addColumn<int>("failure");QTest::addColumn<QString>("message");
+        QTest::newRow("rate-limit")<<403<<int(QNetworkReply::ContentAccessDenied)<<"limite temporairement";
+        QTest::newRow("tls")<<0<<int(QNetworkReply::SslHandshakeFailedError)<<"certificats";
+        QTest::newRow("offline")<<0<<int(QNetworkReply::HostNotFoundError)<<"connexion";
+        QTest::newRow("timeout")<<0<<int(QNetworkReply::TimeoutError)<<"expiré";
+        QTest::newRow("server")<<503<<int(QNetworkReply::ServiceUnavailableError)<<"indisponible";
+    }
+    void updateSearchErrors(){
+        QFETCH(int,http);QFETCH(int,failure);QFETCH(QString,message);
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+        UpdateTransport transport;transport.http=http;transport.failure=QNetworkReply::NetworkError(failure);
+        AppUpdater service(nullptr,&transport);QSignalSpy results(&service,&AppUpdater::checked);
+        service.check(true);QTRY_COMPARE(results.size(),1);QVERIFY(!service.busy());
+        auto error=results[0][1].toString();QVERIFY2(error.contains(message),qPrintable(error));
+        QVERIFY(error.contains("HTTP "+QString::number(http)));QVERIFY(error.contains("test network failure"));
+        QVERIFY(!Diagnostics::explain(error).text().contains("test network failure"));
+        transport.http=200;transport.failure=QNetworkReply::NoError;
+        transport.release="{\"tag_name\":\"v0.0.0\"}";
+        service.check(true);QTRY_COMPARE(results.size(),2);QVERIFY(results[1][1].toString().isEmpty());
     }
     void updateDownloadVerification_data(){QTest::addColumn<bool>("corrupt");QTest::newRow("verified")<<false;QTest::newRow("corrupt-rejected")<<true;}
     void updateDownloadVerification(){

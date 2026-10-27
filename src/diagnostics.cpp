@@ -22,6 +22,8 @@ ErrorExplanation Diagnostics::explain(const QString &raw) {
     const auto split = clean.indexOf('\n');
     return {clean.left(split), explain(clean.mid(split + 1)).text(), true};
   }
+  if (clean.startsWith("La recherche de mise à jour a échoué.") && clean.contains('\n'))
+    return {clean.left(clean.indexOf('\n')), {}, true};
   const auto text = clean.toLower();
   auto has = [&](const char *pattern) {
     return QRegularExpression(QString::fromUtf8(pattern))
@@ -229,8 +231,12 @@ void DiagnosticLabel::refresh() {
     return;
   const auto simple = Diagnostics::explain(error).text();
   auto content = simple.toHtmlEscaped();
-  if (Diagnostics::advanced())
-    content += "\n\nDétails techniques :\n" + error.left(6000).toHtmlEscaped();
+  if (Diagnostics::advanced() && error != simple) {
+    auto details = error;
+    if (details.startsWith(simple + '\n'))
+      details.remove(0, simple.size() + 1);
+    content += "\n\nDétails techniques :\n" + details.left(6000).toHtmlEscaped();
+  }
   content.replace('\n', "<br>");
   content += "<br><a href=\"details\">" +
              QString(Diagnostics::advanced() ? "Masquer les détails techniques"

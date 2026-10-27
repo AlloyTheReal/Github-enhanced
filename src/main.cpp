@@ -7,6 +7,8 @@
 #include <QAction>
 #include <QIcon>
 #include <QSettings>
+#include <QSslSocket>
+#include <QTextStream>
 
 int main(int argc, char *argv[]) {
 #ifndef Q_OS_MACOS
@@ -25,6 +27,10 @@ int main(int argc, char *argv[]) {
     parser.addOption({"layout-editor", "Ouvrir l’éditeur de disposition au démarrage."});
     parser.addOption({"preferences", "Ouvrir les réglages au démarrage."});
     parser.process(app);
+    if (parser.isSet("smoke-test") && !QSslSocket::supportsSsl()) {
+        QTextStream(stderr) << "Le composant HTTPS/TLS de l’application est indisponible.\n";
+        return 1;
+    }
     app.setWindowIcon(QIcon(":/packaging/icons/github-enhanced.png"));
     MainWindow window; window.show();
     if (parser.isSet("layout-editor")) QTimer::singleShot(180, &window, [&window] {

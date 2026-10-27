@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "appversion.h"
+#include "updatedialog.h"
 #include "custompanel.h"
 #include "accountdialog.h"
 #include "layoutdialog.h"
@@ -301,6 +302,27 @@ private slots:
         editor->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         const auto original=QApplication::palette().color(QPalette::Window);auto *preferences=window.findChild<QToolButton *>("settingsButton");QVERIFY(preferences);QCOMPARE(preferences->text(),QString("Paramètres…"));bool previewed=false;
         QTimer::singleShot(100,&window,[&]{auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());if(!settings)return;auto *combo=settings->findChild<QComboBox *>("themeSelector");if(!combo){settings->reject();return;}combo->setCurrentIndex(1);previewed=QTest::qWaitFor([]{return QApplication::palette().color(QPalette::Window)==QColor("#f5f5f7");},5000);settings->reject();});preferences->click();QVERIFY(previewed);QCOMPARE(QApplication::palette().color(QPalette::Window),original);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+    }
+    void updateErrorDetailsRemainReachable(){
+        QTemporaryDir configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());
+        Diagnostics::instance().setAdvanced(true);
+        Theme::apply(Theme::read(QFINDTESTDATA("../themes/obsidian.json")));
+        AppUpdater updater;auto *dialog=new UpdateDialog(&updater);
+        dialog->resize(620,520);dialog->show();
+        auto *status=dialog->findChild<DiagnosticLabel *>("updateStatus");
+        const QString error="La recherche de mise à jour a échoué. GitHub limite temporairement les recherches. Réessayez plus tard.\nHTTP 403 — rate limit exceeded\n"+QString("Long diagnostic details with wrapping and multiple lines.\n").repeated(30);
+        emit updater.checked({},error,true);QTest::qWait(50);
+        auto *scroll=dialog->findChild<QScrollArea *>("updateContentScroll");QVERIFY(scroll);
+        QVERIFY(scroll->verticalScrollBar()->maximum()>0);
+        QVERIFY(status->height()>=status->heightForWidth(status->width()));
+        scroll->ensureVisible(0,status->geometry().bottom());QTest::qWait(30);
+        QVERIFY(dialog->findChild<QPushButton *>("checkForUpdates")->isVisible());
+        const auto captures=qEnvironmentVariable("GHE_CAPTURE_DIR");
+        if(!captures.isEmpty())dialog->grab().save(captures+"/update-error-details.png");
+        Diagnostics::instance().setAdvanced(false);QTest::qWait(30);
+        QVERIFY(!status->text().contains("HTTP 403"));
+        if(!captures.isEmpty())dialog->grab().save(captures+"/update-error.png");
+        dialog->close();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     }
     void settingsManualUpdateWorkflow() {
         QTemporaryDir configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());
