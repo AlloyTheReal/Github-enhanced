@@ -1,6 +1,5 @@
 #include "accountdialog.h"
 #include "appupdater.h"
-#include "desktopintegration.h"
 #include "mergedialog.h"
 #include "custompanel.h"
 #include <QtNetwork>
@@ -142,33 +141,6 @@ class IntegrationTests : public QObject {
         const QJsonObject spec{{"id","custom-tasks"},{"title","À faire"},{"type","checklist"}};QVERIFY(CustomPanel::validate(QJsonArray{spec}));auto bad=spec;bad["type"]="shell";QVERIFY(!CustomPanel::validate(QJsonArray{bad}));QVERIFY(!CustomPanel::validate(QJsonArray{spec,spec}));
         CustomPanel panel(spec);panel.show();auto *input=panel.findChild<QLineEdit *>("customPanelTaskInput");input->setText("Relire le diff");QTest::keyClick(input,Qt::Key_Return);auto *tasks=panel.findChild<QListWidget *>("customPanelTasks");QCOMPARE(tasks->count(),1);tasks->item(0)->setCheckState(Qt::Checked);auto saved=panel.definition();QVERIFY(saved["tasks"].toArray()[0].toObject()["done"].toBool());CustomPanel restored(saved);QCOMPARE(restored.findChild<QListWidget *>("customPanelTasks")->item(0)->text(),"Relire le diff");
         auto info=spec;info["id"]="custom-repository";info["type"]="repository";CustomPanel repository(info);RepositorySyncState state;state.branch="main";state.repository="/test/project";state.upstream="upstream/main";state.ahead=2;repository.updateRepository(state);bool displayed=false;for(auto *label:repository.findChildren<QLabel *>())displayed|=label->text().contains("upstream/main")&&label->text().contains("2 commit");QVERIFY(displayed);
-    }
-    void appImageDesktopIntegration() {
-#ifndef Q_OS_LINUX
-        QSKIP("L’intégration AppImage concerne Linux.");
-#else
-        QTemporaryDir files;QVERIFY(files.isValid());
-        const auto image=files.filePath("App \"logo\" $x `cmd` 100%.AppImage");
-        const auto icon=files.filePath("logo.png"),data=files.filePath("desktop data");
-        auto write=[](const QString &path,const QByteArray &bytes){QFile f(path);return f.open(QIODevice::WriteOnly)&&f.write(bytes)==bytes.size();};
-        QVERIFY(write(image,"#!/bin/sh\nprintf launched > \"$GHE_DESKTOP_LAUNCH_MARKER\"\n"));QVERIFY(QFile::setPermissions(image,QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
-        QVERIFY(write(icon,"icon fixture"));QString error;
-        QVERIFY2(DesktopIntegration::installAppImageLauncher(image,data,icon,&error),qPrintable(error));
-        QFile desktop(data+"/applications/io.githubenhanced.GitHubEnhanced.desktop");QVERIFY(desktop.open(QIODevice::ReadOnly));
-        const auto entry=desktop.readAll();QVERIFY(entry.contains("100%%.AppImage"));QVERIFY(entry.contains("X-GitHubEnhanced-AppImage=true"));
-        QFile installed(data+"/icons/hicolor/1024x1024/apps/io.githubenhanced.GitHubEnhanced.png");QVERIFY(installed.open(QIODevice::ReadOnly));QCOMPARE(installed.readAll(),QByteArray("icon fixture"));
-        QVERIFY(DesktopIntegration::installAppImageLauncher(image,data,icon,&error));
-        if(!QStandardPaths::findExecutable("gio").isEmpty()) {
-            QProcess launcher;auto environment=QProcessEnvironment::systemEnvironment();
-            const auto marker=files.filePath("launched");environment.insert("GHE_DESKTOP_LAUNCH_MARKER",marker);
-            launcher.setProcessEnvironment(environment);launcher.start("gio",{"launch",desktop.fileName()});
-            QVERIFY(launcher.waitForFinished(5000));QVERIFY2(launcher.exitCode()==0,launcher.readAllStandardError().constData());
-            QTRY_VERIFY(QFileInfo::exists(marker));
-        }
-        const auto moved=files.filePath("Moved.AppImage");QVERIFY(QFile::rename(image,moved));
-        QVERIFY(DesktopIntegration::installAppImageLauncher(moved,data,icon,&error));desktop.close();QVERIFY(desktop.open(QIODevice::ReadOnly));QVERIFY(desktop.readAll().contains("Moved.AppImage"));
-        QVERIFY(!DesktopIntegration::installAppImageLauncher(image,data,icon,&error));QVERIFY(!error.isEmpty());
-#endif
     }
     void updateSelectionAndAtomicInstall(){
         const QString repo="AlloyTheReal/Github-enhanced";

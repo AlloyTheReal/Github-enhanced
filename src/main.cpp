@@ -1,15 +1,12 @@
 #include "mainwindow.h"
 #include "appversion.h"
 #include "visuals.h"
-#include "desktopintegration.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QTimer>
 #include <QAction>
 #include <QIcon>
 #include <QSettings>
-#include <QStandardPaths>
-#include <QDebug>
 
 int main(int argc, char *argv[]) {
 #ifndef Q_OS_MACOS
@@ -29,16 +26,6 @@ int main(int argc, char *argv[]) {
     parser.addOption({"preferences", "Ouvrir les réglages au démarrage."});
     parser.process(app);
     app.setWindowIcon(QIcon(":/packaging/icons/github-enhanced.png"));
-#ifdef Q_OS_LINUX
-    if (!qEnvironmentVariableIsEmpty("APPIMAGE")) {
-        QString error;
-        if (!DesktopIntegration::installAppImageLauncher(
-                qEnvironmentVariable("APPIMAGE"),
-                QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),
-                ":/packaging/icons/github-enhanced.png", &error))
-            qWarning().noquote() << error;
-    }
-#endif
     MainWindow window; window.show();
     if (parser.isSet("layout-editor")) QTimer::singleShot(180, &window, [&window] {
         if (auto *action = window.findChild<QAction *>("tool-layout")) action->trigger();

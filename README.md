@@ -1,6 +1,6 @@
 # GitHub Enhanced
 
-Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.4**. **Linux est fonctionnel ; Windows et macOS sont en bêta test.** Non affilié à GitHub.
+Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.5**. **Linux est fonctionnel ; Windows et macOS sont en bêta test.** Non affilié à GitHub.
 
 ![Interface GitHub Enhanced](docs/preview.png)
 
@@ -86,14 +86,14 @@ cpack --config build/release/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B dist
 bash packaging/linux/appimage.sh
 # Archive source pour Arch ou compilation locale
 cpack --config build/release/CPackSourceConfig.cmake -B dist
-cp dist/github-enhanced-0.2.4.tar.gz packaging/arch/
+cp dist/github-enhanced-0.2.5.tar.gz packaging/arch/
 cd packaging/arch
 makepkg -si
 ```
 
 Pour Windows : la génération MSI nécessite CMake ≥ 3.30. Installez NSIS, .NET et WiX 4 (`dotnet tool install --global wix --version 4.0.6`, puis `wix extension add --global WixToolset.UI.wixext/4.0.6`) ; utilisez `cpack --config build/release/CPackConfig.cmake -G 'NSIS;WIX' -B dist`. Pour macOS : `cpack --config build/release/CPackConfig.cmake -G DragNDrop -B dist`.
 
-Au lancement de l’AppImage, le lanceur et son logo sont installés dans le répertoire de données utilisateur (`$XDG_DATA_HOME`, ou `~/.local/share`) pour être reconnus sous Wayland. Le lanceur suit le chemin de la dernière AppImage ouverte.
+L’AppImage ne crée aucun raccourci ni icône dans le profil utilisateur au lancement. Son intégration au menu des applications est gérée par l’outil de votre choix, par exemple Shelly.
 
 Les formats ne garantissent pas une compatibilité avec **toutes** les versions de tous les OS. Le build AppImage de la CI prend Ubuntu 24.04 comme base ; pour les systèmes plus anciens, reconstruisez sur une base adaptée. ARM Linux nécessite une compilation native ; Windows ARM et Flatpak ne sont pas encore configurés.
 
