@@ -1,12 +1,13 @@
 # GitHub Enhanced
 
-Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.6**. **Linux est fonctionnel ; Windows et macOS sont en bêta test.** Non affilié à GitHub.
+Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.7**. **Linux est fonctionnel ; Windows et macOS sont en bêta test.** Non affilié à GitHub.
 
 ![Interface GitHub Enhanced](docs/preview.png)
 
 ## Déjà implémenté
 
 - Ouverture, création et clonage de dépôts ; dépôts récents.
+- Consultation des commits avec fichiers filtrables, diff unifié ou côte à côte, numéros de lignes, compteurs, recherche et navigation entre blocs modifiés.
 - Préparation automatique des fichiers modifiés, commits et historique avec contenu des fichiers et liste latérale à droite.
 - État distant distinct : commits à envoyer/recevoir, divergence, branche suivie, dernière vérification et erreurs réseau visibles.
 - Git LFS automatique pour les fichiers modifiés à partir de 50 Mio ; contrôle avant envoi et conversion proposée pour les gros fichiers déjà commités, avec sauvegarde locale. Installation automatique du composant officiel.
@@ -86,7 +87,7 @@ cpack --config build/release/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B dist
 bash packaging/linux/appimage.sh
 # Archive source pour Arch ou compilation locale
 cpack --config build/release/CPackSourceConfig.cmake -B dist
-cp dist/github-enhanced-0.2.6.tar.gz packaging/arch/
+cp dist/github-enhanced-0.2.7.tar.gz packaging/arch/
 cd packaging/arch
 makepkg -si
 ```

@@ -30,6 +30,7 @@ class QPushButton;
 class CustomPanel;
 class AppUpdater;
 class UpdateDialog;
+class DiffViewer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -92,6 +93,7 @@ private:
     QTreeWidget *files;
     QTreeWidget *history;
     QPlainTextEdit *diff;
+    DiffViewer *diffViewer;
     QPlainTextEdit *activity;
     QPlainTextEdit *description;
     QLineEdit *summary;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-set(GHE_VERSION "0.2.6" CACHE STRING "Application version")
+set(GHE_VERSION "0.2.7" CACHE STRING "Application version")
 if(DEFINED ENV{GITHUB_REF_TYPE} AND "$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" AND "$ENV{GITHUB_REF_NAME}" MATCHES "^v([0-9]+\.[0-9]+\.[0-9]+)$")
     set(GHE_VERSION "${CMAKE_MATCH_1}")
 endif()
@@ -16,7 +16,7 @@ set(INTEGRATION_SOURCES src/mergedialog.cpp src/mergedialog.h src/appupdater.cpp
     src/toolruntime.cpp src/toolruntime.h src/codexclient.cpp src/codexclient.h
     src/githubclient.cpp src/githubclient.h src/accountdialog.cpp src/accountdialog.h
     src/repobrowser.cpp src/repobrowser.h src/reposettings.cpp src/reposettings.h
-    src/layoutcanvas.cpp src/layoutcanvas.h)
+    src/layoutcanvas.cpp src/layoutcanvas.h src/diffviewer.cpp src/diffviewer.h src/desktopidentity.cpp src/desktopidentity.h)
 qt_add_executable(github-enhanced WIN32 MACOSX_BUNDLE
     src/main.cpp src/mainwindow.cpp src/mainwindow.h
     src/commandrunner.cpp src/commandrunner.h

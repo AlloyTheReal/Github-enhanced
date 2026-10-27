@@ -7,6 +7,8 @@ int GlassStyle::pixelMetric(PixelMetric m, const QStyleOption *o,
   if (m == PM_IndicatorWidth || m == PM_IndicatorHeight ||
       m == PM_ExclusiveIndicatorWidth || m == PM_ExclusiveIndicatorHeight)
     return 18;
+  if (m == PM_TabBarBaseHeight || m == PM_TabBarBaseOverlap)
+    return 0;
   if (m == PM_DefaultFrameWidth)
     return 0;
   if (m == PM_SplitterWidth)
@@ -27,12 +29,15 @@ int GlassStyle::styleHint(StyleHint h, const QStyleOption *o, const QWidget *w,
 }
 void GlassStyle::drawPrimitive(PrimitiveElement e, const QStyleOption *o,
                                QPainter *p, const QWidget *w) const {
+  if (e == PE_FrameTabBarBase)
+    return;
   if (e == PE_IndicatorCheckBox || e == PE_IndicatorItemViewItemCheck ||
       e == PE_IndicatorRadioButton) {
     p->save();
     p->setRenderHint(QPainter::Antialiasing);
     QRectF r = o->rect;
-    r.setSize(QSizeF(17, 17));
+    const qreal side=qMin(17, qMin(o->rect.width(),o->rect.height())-1);
+    r.setSize(QSizeF(side, side));
     r.moveCenter(o->rect.center());
     r.adjust(.5, .5, -.5, -.5);
     const bool checked = o->state & (State_On | State_NoChange),

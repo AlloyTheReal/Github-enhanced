@@ -47,7 +47,9 @@ class ControlFilter : public QObject {
         auto *widget = qobject_cast<QWidget *>(object);
         if (!widget)
             return false;
-        if(event->type()==QEvent::Polish || event->type()==QEvent::Show) {
+        if(event->type()==QEvent::Polish || event->type()==QEvent::Show || event->type()==QEvent::FontChange) {
+            if(auto *check=qobject_cast<QCheckBox *>(widget))
+                check->setMinimumHeight(qMax(30,check->fontMetrics().height()+12));
             if(auto *check=qobject_cast<QCheckBox *>(widget);check&&!check->property("glassCheckInstalled").toBool()){
                 check->setProperty("glassCheckInstalled",true);check->setProperty("glassChecked",check->isChecked()?1.:0.);
                 QObject::connect(check,&QCheckBox::toggled,check,[check](bool on){animate(check,"glassChecked",on?1.:0.,150);});

@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "appversion.h"
 #include "updatedialog.h"
+#include "diffviewer.h"
 #include "custompanel.h"
 #include "accountdialog.h"
 #include "layoutdialog.h"
@@ -27,6 +28,7 @@ class UiTests : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() {
+        Visuals::install();
         QCoreApplication::setOrganizationName("GitHubEnhancedTests");
         QCoreApplication::setApplicationName("UI");
         QCoreApplication::setApplicationVersion(GHE_APP_VERSION);
@@ -341,6 +343,31 @@ private slots:
         });
         window.findChild<QToolButton *>("settingsButton")->click();QVERIFY(opened);
         QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+    }
+    void operationControlsAtLargeText(){
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+        Theme::apply(Theme::read(QFINDTESTDATA("../themes/obsidian.json")),false,18);
+        Diagnostics::instance().setAdvanced(true);OperationDialog dialog;
+        dialog.begin("Préparation du commit");dialog.step("Vérification des fichiers modifiés avant la création du commit.");
+        dialog.append("Première ligne de détail entièrement visible\nDeuxième ligne de détail entièrement visible\n");dialog.show();QTest::qWait(200);
+        auto *toggle=dialog.findChild<QCheckBox *>("operationAdvanced");QVERIFY(toggle->height()>=toggle->fontMetrics().height()+8);
+        auto *log=dialog.findChild<QPlainTextEdit *>("operationLog");QVERIFY(log->viewport()->height()>log->fontMetrics().lineSpacing()*2);
+        const auto captures=qEnvironmentVariable("GHE_CAPTURE_DIR");if(!captures.isEmpty())dialog.grab().save(captures+"/operation-large-text.png");
+        Diagnostics::instance().setAdvanced(false);dialog.finish(true);dialog.hide();Theme::apply(Theme::read(QFINDTESTDATA("../themes/obsidian.json")),false,11);
+    }
+    void structuredDiffViews(){
+        Theme::apply(Theme::read(QFINDTESTDATA("../themes/obsidian.json")));
+        DiffViewer viewer;viewer.resize(1120,660);viewer.show();
+        viewer.setContent("diff --git a/main.cpp b/main.cpp\n--- a/main.cpp\n+++ b/main.cpp\n@@ -1,3 +1,4 @@\n int main() {\n-    return 0;\n+    const int result = 42;\n+    return result;\n }\n");
+        auto *stats=viewer.findChild<QLabel *>("diffStatistics");QVERIFY(stats->text().contains("+2"));QVERIFY(stats->text().contains("−1"));
+        auto *mode=viewer.findChild<QComboBox *>("diffMode");QVERIFY(mode->isEnabled());mode->setCurrentIndex(1);
+        auto *before=viewer.findChild<QPlainTextEdit *>("diffBefore"),*after=viewer.findChild<QPlainTextEdit *>("diffAfter");
+        QVERIFY(before->toPlainText().contains("return 0;"));QVERIFY(!before->toPlainText().contains("return result;"));
+        QVERIFY(after->toPlainText().contains("return result;"));QCOMPARE(before->blockCount(),after->blockCount());
+        QTest::qWait(50);const auto captures=qEnvironmentVariable("GHE_CAPTURE_DIR");if(!captures.isEmpty())viewer.grab().save(captures+"/diff-side-by-side.png");
+        mode->setCurrentIndex(0);QTest::qWait(20);if(!captures.isEmpty())viewer.grab().save(captures+"/diff-unified.png");
+        auto *search=viewer.findChild<QLineEdit *>("diffSearch");search->setText("result = 42");QTest::keyClick(search,Qt::Key_Return);QCOMPARE(viewer.editor()->textCursor().selectedText(),QString("result = 42"));
+        viewer.setContent("+literal source code\n-literal source code",false);QVERIFY(!mode->isEnabled());QVERIFY(viewer.editor()->extraSelections().isEmpty());
     }
     void commitFilesAndRecentRemoval(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());

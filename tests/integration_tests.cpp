@@ -1,5 +1,6 @@
 #include "accountdialog.h"
 #include "appupdater.h"
+#include "desktopidentity.h"
 #include "mergedialog.h"
 #include "custompanel.h"
 #include <QtNetwork>
@@ -155,6 +156,15 @@ class IntegrationTests : public QObject {
         QTemporaryDir files;const auto target=files.filePath("GitHub-Enhanced.AppImage"),source=files.filePath("new.AppImage");auto write=[](const QString &path,const QByteArray &bytes){QFile f(path);return f.open(QIODevice::WriteOnly)&&f.write(bytes)==bytes.size();};
         QVERIFY(write(target,"old executable"));QVERIFY(write(source,image));QVERIFY2(AppUpdater::replaceAppImage(target,source,hash,&error),qPrintable(error));QFile current(target),backup(target+".previous");QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(backup.open(QIODevice::ReadOnly));QCOMPARE(backup.readAll(),QByteArray("old executable"));backup.close();
         QVERIFY(write(source,image+"tampered"));QVERIFY(!AppUpdater::replaceAppImage(target,source,hash,&error));QVERIFY(current.open(QIODevice::ReadOnly));QCOMPARE(current.readAll(),image);current.close();QVERIFY(!AppUpdater::replaceAppImage(files.filePath("package.deb"),source,hash,&error));
+    }
+    void desktopIdentityUsesExistingManagerLauncher(){
+        QTemporaryDir data;QDir().mkpath(data.filePath("applications"));
+        QFile file(data.filePath("applications/github-enhanced-x86_64.desktop"));QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("[Desktop Entry]\nName=GitHub Enhanced\nExec=\"/home/user/Applications/GitHub-Enhanced.AppImage\" %f\n");file.close();
+        QCOMPARE(appImageDesktopIdentity("/home/user/Applications/GitHub-Enhanced.AppImage",{data.path()}),QString("github-enhanced-x86_64"));
+        QCOMPARE(appImageDesktopIdentity("/tmp/GitHub-Enhanced.AppImage",{data.path()}),QString("github-enhanced-x86_64"));
+        QCOMPARE(appImageDesktopIdentity("",{data.path()}),QString("io.githubenhanced.GitHubEnhanced"));
+        QCOMPARE(QDir(data.filePath("applications")).entryList(QDir::Files).size(),1);
     }
     void updateSearchErrors_data(){
         QTest::addColumn<int>("http");QTest::addColumn<int>("failure");QTest::addColumn<QString>("message");

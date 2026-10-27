@@ -131,18 +131,22 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QComboBox QAbstractItemView::item { min-height: 28px; padding: 4px 12px; border-radius: 7px; }
         QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover { background: @card; color: @text; }
         QComboBox QAbstractItemView::item:disabled { color: @muted; background: transparent; }
-        QPlainTextEdit#diffEditor { border: 0; border-radius: 0; padding: 14px 18px; background: @surface; }
+        QPlainTextEdit#diffEditor, QPlainTextEdit#diffBefore, QPlainTextEdit#diffAfter { border: 0; border-radius: 0; padding: 0; background: @surface; }
+        QWidget#diffTools { background: @background; }
         QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { background: @card; }
         QPushButton, QToolButton { background: transparent; color: @text; border: 0; border-radius: 11px; padding: 8px 16px; min-height: 20px; }
         QPushButton:disabled, QToolButton:disabled { color: @muted; }
         QTabWidget::pane { border: 0; background: transparent; }
-        QTabBar::tab { background: transparent; color: @muted; padding: 10px 18px; border: 0; }
+        QTabBar { qproperty-drawBase: 0; border: 0; background: @background; }
+        QTabBar::tab { margin: 0; background: transparent; color: @muted; padding: 10px 18px; border: 0; }
         QTabBar::tab:selected { background: @card; color: @text; border-radius: 10px; }
         QHeaderView::section { background: @background; color: @muted; border: 0; padding: 8px; }
         QStatusBar { background: @background; color: @muted; border: 0; font-size: 11px; }
         QSplitter::handle { background: transparent; }
         QSplitter::handle:hover { background: @card; }
-        QCheckBox, QRadioButton { spacing: 9px; padding: 5px 0; background: transparent; }
+        QCheckBox, QRadioButton { spacing: 9px; padding: 4px 2px; min-height: 24px; background: transparent; }
+        QCheckBox::indicator, QRadioButton::indicator { width: 18px; height: 18px; }
+        QPlainTextEdit#operationLog { padding: 0; }
         QSlider::groove:horizontal { height: 5px; border-radius: 2px; background: @card; }
         QSlider::sub-page:horizontal { background: @accent; border-radius: 2px; }
         QSlider::handle:horizontal { width: 18px; height: 18px; margin: -7px 0; border: 0; border-radius: 9px; background: @text; }

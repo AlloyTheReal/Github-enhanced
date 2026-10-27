@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "desktopidentity.h"
+#include <QStandardPaths>
 #include "appversion.h"
 #include "visuals.h"
 #include <QApplication>
@@ -18,7 +20,7 @@ int main(int argc, char *argv[]) {
     Visuals::install();
     app.setOrganizationName("GitHubEnhanced"); app.setOrganizationDomain("githubenhanced.io");
     app.setApplicationName("GitHub Enhanced"); app.setApplicationVersion(GHE_APP_VERSION);
-    app.setDesktopFileName("io.githubenhanced.GitHubEnhanced");
+    app.setDesktopFileName(appImageDesktopIdentity(qEnvironmentVariable("APPIMAGE"),QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)));
     QCommandLineParser parser; parser.setApplicationDescription("Client Git natif et personnalisable");
     parser.addHelpOption(); parser.addVersionOption();
     parser.addPositionalArgument("repository", "Dépôt local à ouvrir", "[repository]");

@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "diffviewer.h"
 #include "custompanel.h"
 #include "updatedialog.h"
 #include "mergedialog.h"
@@ -17,6 +18,25 @@
 #include <QDesktopServices>
 
 namespace {
+class TwoLineDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem &option,const QModelIndex &) const override {
+        return QSize(100,QFontMetrics(option.font).lineSpacing()*2+20);
+    }
+    void paint(QPainter *painter,const QStyleOptionViewItem &option,const QModelIndex &index) const override {
+        QStyleOptionViewItem cell(option);initStyleOption(&cell,index);
+        const auto lines=cell.text.split('\n');
+        const auto title=index.data(Qt::UserRole+2).isValid()?index.data(Qt::UserRole+2).toString():lines.value(0);
+        const auto subtitle=index.data(Qt::UserRole+3).isValid()?index.data(Qt::UserRole+3).toString():lines.value(1);
+        cell.text.clear();cell.widget->style()->drawControl(QStyle::CE_ItemViewItem,&cell,painter,cell.widget);
+        painter->save();const auto rect=option.rect.adjusted(12,8,-12,-8);const auto metrics=QFontMetrics(option.font);
+        painter->setFont(option.font);painter->setPen(option.palette.color(QPalette::Text));
+        painter->drawText(QRect(rect.x(),rect.y(),rect.width(),metrics.lineSpacing()),Qt::AlignLeft|Qt::AlignVCenter,metrics.elidedText(title,Qt::ElideMiddle,rect.width()));
+        painter->setPen(option.palette.color(QPalette::PlaceholderText));
+        painter->drawText(QRect(rect.x(),rect.y()+metrics.lineSpacing()+2,rect.width(),metrics.lineSpacing()),Qt::AlignLeft|Qt::AlignVCenter,metrics.elidedText(subtitle,Qt::ElideRight,rect.width()));painter->restore();
+    }
+};
 class MenuTextButton : public QToolButton {
 public:
     using QToolButton::QToolButton;
@@ -65,6 +85,7 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), repositoryProbe(this)
     repositoryProbe.setObjectName("repositoryProbe");repositoryProbe.setTimeoutMilliseconds(15000);repositoryTimer.setParent(this);repositoryTimer.setObjectName("repositoryPollTimer");
     updater=new AppUpdater(this);
     connect(updater,&AppUpdater::checked,this,[this](const AppUpdate &update,const QString &,bool manual){if(!manual&&update.available()){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}});
+    setWindowIcon(QIcon(":/packaging/icons/github-enhanced.png"));
     setWindowTitle("GitHub Enhanced"); resize(1200, 780); setMinimumSize(860, 580);
     setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks);
     const bool migrated = settings.value("interfaceRevision", 0).toInt() >= 3;
@@ -191,6 +212,7 @@ void MainWindow::buildInterface() {
     auto *welcomeOuter = new QVBoxLayout(welcome); welcomeOuter->addStretch();
     auto *card = new QWidget; card->setMaximumWidth(400); auto *welcomeLayout = new QVBoxLayout(card);
     welcomeLayout->setSpacing(12);
+    auto *logo=new QLabel;logo->setObjectName("welcomeLogo");logo->setPixmap(QIcon(":/packaging/icons/github-enhanced.png").pixmap(72,72));logo->setAlignment(Qt::AlignCenter);welcomeLayout->addWidget(logo);
     auto *title = label("GitHub Enhanced", "headline"); title->setAlignment(Qt::AlignCenter); welcomeLayout->addWidget(title);
     auto *intro = label("Ouvrez un dépôt pour commencer.", "muted"); intro->setAlignment(Qt::AlignCenter); welcomeLayout->addWidget(intro);
     welcomeLayout->addSpacing(12);
@@ -215,24 +237,25 @@ void MainWindow::buildInterface() {
     connect(workingView,&QPushButton::clicked,this,[this]{selectedCommit.clear();commitBrowser->hide();diffDock->raise();showDiff();});
     diffLayout->addWidget(diffHeader);
 
-    diff = new QPlainTextEdit; diff->setObjectName("diffEditor"); diff->setReadOnly(true);
-    diff->setLineWrapMode(QPlainTextEdit::NoWrap); diff->setFrameShape(QFrame::NoFrame);
-    auto codeFont = QFontDatabase::systemFont(QFontDatabase::FixedFont); codeFont.setPointSize(11); diff->setFont(codeFont);
-    diff->setAccessibleName("Diff du fichier ou du commit"); auto *contentRow=new QSplitter(Qt::Horizontal);contentRow->setObjectName("commitContentSplit");contentRow->addWidget(diff);
-    commitBrowser=new QWidget;commitBrowser->setObjectName("commitBrowser");commitBrowser->setMinimumWidth(230);commitBrowser->setMaximumWidth(420);
+    diffViewer=new DiffViewer;diff=diffViewer->editor();
+    auto *contentRow=new QSplitter(Qt::Horizontal);contentRow->setObjectName("commitContentSplit");
+    commitBrowser=new QWidget;commitBrowser->setObjectName("commitBrowser");commitBrowser->setMinimumWidth(280);commitBrowser->setMaximumWidth(420);
     auto *commitBrowserLayout=new QVBoxLayout(commitBrowser);commitBrowserLayout->setContentsMargins(14,14,14,14);commitBrowserLayout->setSpacing(12);
     commitSubject=new QLabel;commitSubject->setObjectName("commitSubject");commitSubject->setTextFormat(Qt::PlainText);commitSubject->setWordWrap(true);auto subjectFont=commitSubject->font();subjectFont.setBold(true);commitSubject->setFont(subjectFont);commitBrowserLayout->addWidget(commitSubject);
     commitMeta=new QLabel;commitMeta->setObjectName("muted");commitMeta->setTextFormat(Qt::PlainText);commitMeta->setWordWrap(true);commitMeta->setTextInteractionFlags(Qt::TextSelectableByMouse);commitBrowserLayout->addWidget(commitMeta);
     commitInfo=new QLabel;commitInfo->setObjectName("commitInfo");commitInfo->setTextFormat(Qt::PlainText);commitInfo->setWordWrap(true);commitInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);commitBrowserLayout->addWidget(commitInfo);
-    commitView=new GlassComboBox;commitView->setObjectName("commitFileView");commitView->addItems({"Contenu du fichier","Modifications du fichier"});commitBrowserLayout->addWidget(commitView);
-    commitFiles=new QTreeWidget;commitFiles->setObjectName("commitFiles");commitFiles->setHeaderHidden(true);commitFiles->setRootIsDecorated(false);commitFiles->setAccessibleName("Fichiers du commit");commitBrowserLayout->addWidget(commitFiles,1);
-    contentRow->addWidget(commitBrowser);contentRow->setStretchFactor(0,1);contentRow->setSizes({800,280});commitBrowser->hide();diffLayout->addWidget(contentRow,1);pages->addWidget(diffPage);
+    commitView=new GlassComboBox;commitView->setObjectName("commitFileView");commitView->addItems({"Contenu du fichier","Modifications du fichier"});commitView->setCurrentIndex(1);commitBrowserLayout->addWidget(commitView);
+    auto *fileFilter=new QLineEdit;fileFilter->setObjectName("commitFileFilter");fileFilter->setPlaceholderText("Filtrer les fichiers…");fileFilter->setClearButtonEnabled(true);commitBrowserLayout->addWidget(fileFilter);
+    connect(fileFilter,&QLineEdit::textChanged,this,[this](const QString &query){for(int i=0;i<commitFiles->topLevelItemCount();++i){auto *item=commitFiles->topLevelItem(i);item->setHidden(!item->data(0,Qt::UserRole).toString().contains(query,Qt::CaseInsensitive));}});
+    auto *fileCount=new QLabel("Fichiers du commit");fileCount->setObjectName("commitFileCount");commitBrowserLayout->addWidget(fileCount);
+    commitFiles=new QTreeWidget;commitFiles->setObjectName("commitFiles");commitFiles->setItemDelegate(new TwoLineDelegate(commitFiles));commitFiles->setHeaderHidden(true);commitFiles->setRootIsDecorated(false);commitFiles->setAccessibleName("Fichiers du commit");commitBrowserLayout->addWidget(commitFiles,1);
+    contentRow->addWidget(commitBrowser);contentRow->addWidget(diffViewer);contentRow->setStretchFactor(1,1);contentRow->setSizes({280,800});commitBrowser->hide();diffLayout->addWidget(contentRow,1);pages->addWidget(diffPage);
     connect(commitFiles,&QTreeWidget::itemSelectionChanged,this,&MainWindow::showCommitFile);connect(commitView,&QComboBox::activated,this,[this]{showCommitFile();});
     diffDock = dock(this, "Diff", "diff", pages, Qt::RightDockWidgetArea);
     diffDock->setMinimumWidth(300);
 
     history = new QTreeWidget; history->setObjectName("commitHistory"); history->setHeaderLabels({"Historique"});
-    history->setRootIsDecorated(false); history->setHeaderHidden(true);
+    history->setItemDelegate(new TwoLineDelegate(history));history->setRootIsDecorated(false); history->setHeaderHidden(true);
     history->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     historyDock = dock(this, "Historique", "history", history, Qt::LeftDockWidgetArea);
     connect(history, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) {showCommit(item->data(0,Qt::UserRole).toString());});
@@ -259,7 +282,7 @@ void MainWindow::buildInterface() {
     commitButton->setToolTip("Créer un commit avec tous les fichiers modifiés");
     commitDock = dock(this, "Commit", "commit", commitWidget, Qt::LeftDockWidgetArea);
     activity = new QPlainTextEdit; activity->setReadOnly(true); activity->setFrameShape(QFrame::NoFrame);
-    activity->setMaximumBlockCount(1500); activity->setFont(codeFont);
+    activity->setMaximumBlockCount(1500); activity->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     activityDock = dock(this, "Journal", "activity", activity, Qt::BottomDockWidgetArea);
     statusBar()->setSizeGripEnabled(false); statusBar()->showMessage("Choisissez un dépôt");
     resetLayout();
@@ -399,7 +422,7 @@ void MainWindow::openRepository(const QString &path) {
         auto root = r.output;
         if (root.endsWith('\n')) root.chop(1);
         repository = QString::fromUtf8(root);repositorySnapshot.clear();historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
-        branch.clear();changes.clear();localStatusKnown=false; files->clear(); history->clear(); diff->clear();
+        branch.clear();changes.clear();localStatusKnown=false; files->clear(); history->clear(); diffViewer->setContent({},false);
         summary->clear(); description->clear();
         recent.removeAll(repository); recent.prepend(repository); while (recent.size() > 20) recent.removeLast();
         settings.setValue("recent", recent); settings.setValue("lastRepository", repository); rebuildRecent();
@@ -471,6 +494,7 @@ void MainWindow::refreshViews() {
         for (qsizetype i = 0; i + 4 < parts.size(); i += 5) {
             auto *item = new QTreeWidgetItem(history, {QString::fromUtf8(parts[i+4]) + "\n" + QString::fromUtf8(parts[i+1]) + " · " + QString::fromUtf8(parts[i+2]) + " · " + QString::fromUtf8(parts[i+3])});
             item->setData(0, Qt::UserRole, QString::fromUtf8(parts[i]).trimmed());
+            item->setSizeHint(0,QSize(0,history->fontMetrics().lineSpacing()*2+20));
             if(item->data(0,Qt::UserRole).toString()==oldSelection)history->setCurrentItem(item);
         }
         history->verticalScrollBar()->setValue(oldScroll);
@@ -641,11 +665,11 @@ void MainWindow::commit() {
 void MainWindow::showDiff() {
     if(!selectedCommit.isEmpty())return;
     auto *item = files->currentItem(); const int revision = ++diffRevision;
-    if (!item) { diffTitle->setText(changes.isEmpty() ? "Aucune modification locale non commitée" : "Sélectionnez un fichier pour examiner ses modifications"); diff->clear(); return; }
+    if (!item) { diffTitle->setText(changes.isEmpty() ? "Aucune modification locale non commitée" : "Sélectionnez un fichier pour examiner ses modifications"); diffViewer->setContent({},false); return; }
     const QString file = item->data(1, Qt::UserRole).toString(); const auto path = repository;
     FileChange change;
     for (const auto &c : changes) if (c.path == file) change = c;
-    if(diffTitle->text()!=file)diff->clear();
+    if(diffTitle->text()!=file)diffViewer->setContent({},false);
     diffTitle->setText(file);
     if (change.untracked()) {
         QFileInfo info(QDir(repository).filePath(file));
@@ -667,7 +691,7 @@ void MainWindow::showDiff() {
 
 void MainWindow::showCommit(const QString &sha) {
     if(!QRegularExpression("^[a-fA-F0-9]{40,64}$").match(sha).hasMatch())return;
-    selectedCommit=sha;commitBrowser->show();commitFiles->clear();commitSubject->setText("Chargement du commit…");commitInfo->clear();commitMeta->clear();diffTitle->setText("Commit "+sha.left(12));diff->clear();diffDock->show();diffDock->raise();pages->setCurrentIndex(1);
+    selectedCommit=sha;commitBrowser->show();commitBrowser->findChild<QLineEdit *>("commitFileFilter")->clear();commitFiles->clear();commitSubject->setText("Chargement du commit…");commitInfo->clear();commitMeta->clear();diffTitle->setText("Commit "+sha.left(12));diffViewer->setContent({},false);diffDock->show();diffDock->raise();pages->setCurrentIndex(1);
     const auto path=repository;const int revision=++diffRevision;
     diffRunner.run("git",{"show","--no-patch","--format=%s%x00%an%x00%aI%x00%b",sha,"--"},path,[this,path,sha](const CommandResult &r){
         if(path!=repository||sha!=selectedCommit)return;
@@ -682,7 +706,11 @@ void MainWindow::showCommit(const QString &sha) {
         if(path!=repository||sha!=selectedCommit||revision!=diffRevision)return;
         if(!r.ok()){showText(r.message());return;}
         const auto records=r.output.split('\0');
-        {QSignalBlocker block(commitFiles);for(qsizetype i=0;i+1<records.size();i+=2){if(records[i].isEmpty())continue;const auto file=QString::fromUtf8(records[i+1]);auto *item=new QTreeWidgetItem(commitFiles,{QString::fromLatin1(records[i])+"  "+file});item->setData(0,Qt::UserRole,file);item->setData(0,Qt::UserRole+1,QString::fromLatin1(records[i]));item->setToolTip(0,file);}}
+        {QSignalBlocker block(commitFiles);for(qsizetype i=0;i+1<records.size();i+=2){if(records[i].isEmpty())continue;const auto file=QString::fromUtf8(records[i+1]);const auto status=QString::fromLatin1(records[i]);
+            const auto description=QMap<QString,QString>{{"A","Ajouté"},{"M","Modifié"},{"D","Supprimé"},{"T","Type modifié"}}.value(status,status);
+            auto *item=new QTreeWidgetItem(commitFiles,{status+" · "+description+"\n"+file});
+            item->setData(0,Qt::UserRole+2,file);item->setData(0,Qt::UserRole+3,description);item->setData(0,Qt::UserRole,file);item->setData(0,Qt::UserRole+1,QString::fromLatin1(records[i]));item->setToolTip(0,file);}}
+        commitBrowser->findChild<QLabel *>("commitFileCount")->setText(QString("%1 fichier(s) modifié(s)").arg(commitFiles->topLevelItemCount()));
         if(commitFiles->topLevelItemCount())commitFiles->setCurrentItem(commitFiles->topLevelItem(0));else showText("Ce commit ne contient pas de changement de fichier par rapport à ses parents.");
     });
 }
@@ -698,7 +726,7 @@ void MainWindow::showCommitFile(){
         if(!r.ok()){showText(r.message());return;}
         if(r.output.contains('\0')){showText("Fichier binaire · aperçu textuel indisponible.");return;}
         auto text=QString::fromUtf8(r.output);if(text.startsWith("version https://git-lfs.github.com/spec/v1"))text="Fichier stocké avec Git LFS\n\n"+text;
-        showText(text+(r.truncated?"\n[… aperçu limité à 1 Mio]":""));if(!patch)diff->setExtraSelections({});
+        showText(text+(r.truncated?"\n[… aperçu limité à 1 Mio]":""));if(!patch)diffViewer->setContent(text+(r.truncated?"\n[… aperçu limité à 1 Mio]":""),false);
     },{},1024*1024,true);
 }
 
@@ -709,25 +737,12 @@ void MainWindow::showText(const QString &text) {
     if(same&&!diff->property("refreshHighlight").toBool())return;
     diff->setProperty("refreshHighlight",false);
     if(!same){const int vertical=diff->verticalScrollBar()->value(),horizontal=diff->horizontalScrollBar()->value();diff->setPlainText(rendered);diff->verticalScrollBar()->setValue(vertical);diff->horizontalScrollBar()->setValue(horizontal);}
-    QList<QTextEdit::ExtraSelection> selections;
-    auto block = diff->document()->firstBlock();
-    int count = 0;
-    while (block.isValid() && count++ < 12000) {
-        auto line = block.text();
-        if (line.startsWith('+') || line.startsWith('-') || line.startsWith("@@")) {
-            QTextEdit::ExtraSelection selection; selection.cursor = QTextCursor(block);
-            selection.cursor.select(QTextCursor::LineUnderCursor);
-            QColor color(activeTheme[line.startsWith('+') ? "added" : line.startsWith('-') ? "removed" : "accent"].toString());
-            if (native) {
-                const bool dark = palette().color(QPalette::Base).lightness() < 128;
-                color = line.startsWith('+') ? QColor(dark ? "#66c58a" : "#1a7f37") : line.startsWith('-') ? QColor(dark ? "#f08080" : "#cf222e") : palette().color(QPalette::Highlight);
-            }
-            selection.format.setForeground(color);
-            selections.append(selection);
-        }
-        block = block.next();
+    for(auto *editor:diffViewer->findChildren<QPlainTextEdit *>()){
+        editor->setProperty("addedColor",native?QString():activeTheme["added"].toString());
+        editor->setProperty("removedColor",native?QString():activeTheme["removed"].toString());
     }
-    diff->setExtraSelections(selections);
+    diffViewer->setContent(rendered,rendered.contains(QRegularExpression("(?m)^@@ -")));
+
 }
 
 void MainWindow::cloneRepository() {
@@ -888,7 +903,7 @@ void MainWindow::resetLayout(const QString &preset) {
     addDockWidget(Qt::LeftDockWidgetArea, changesDock);
     addDockWidget(Qt::LeftDockWidgetArea, commitDock); splitDockWidget(changesDock, commitDock, Qt::Vertical);
     addDockWidget(Qt::LeftDockWidgetArea, historyDock); tabifyDockWidget(changesDock, historyDock);
-    for (auto *bar : findChildren<QTabBar *>()) bar->setDrawBase(false);
+    for (auto *bar : findChildren<QTabBar *>()) { bar->setDrawBase(false);bar->setExpanding(false);bar->setDocumentMode(true); }
     addDockWidget(Qt::RightDockWidgetArea, diffDock);
     addDockWidget(Qt::LeftDockWidgetArea, repositoryDock);
     addDockWidget(Qt::BottomDockWidgetArea, activityDock);

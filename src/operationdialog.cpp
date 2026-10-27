@@ -3,7 +3,7 @@
 OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   setObjectName("operationDialog");
   setWindowTitle("Activité");
-  resize(560, 380);
+  resize(640, 480);
   setModal(false);
   auto *root = new QVBoxLayout(this);
   root->setContentsMargins(24, 24, 24, 24);
@@ -17,6 +17,8 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   detail->setText("Aucune opération en cours.");
   detail->setObjectName("operationDetail");
   detail->setWordWrap(true);
+  detail->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
+  titleLabel->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
   root->addWidget(detail);
   progress = new QProgressBar;
   progress->setObjectName("operationProgress");
@@ -32,6 +34,8 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
   details->setObjectName("operationLog");
   details->setReadOnly(true);
   details->setMaximumBlockCount(300);
+  details->setMinimumHeight(120);
+  details->document()->setDocumentMargin(10);
   root->addWidget(details, 1);
   details->setVisible(Diagnostics::advanced());
   connect(&Diagnostics::instance(), &Diagnostics::advancedChanged, this,
@@ -44,6 +48,7 @@ OperationDialog::OperationDialog(QWidget *parent) : GlassDialog(parent) {
       new QLabel("Vous pouvez masquer cette fenêtre ; l’opération continue.");
   hint->setObjectName("muted");
   hint->setWordWrap(true);
+  hint->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
   root->addWidget(hint);
   recoveryButton = new QPushButton;
   recoveryButton->setObjectName("operationRecovery");
