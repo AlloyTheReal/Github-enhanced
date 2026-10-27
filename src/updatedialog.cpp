@@ -19,17 +19,6 @@ UpdateDialog::UpdateDialog(AppUpdater *updater, QWidget *parent)
   source->setTextFormat(Qt::PlainText);
   source->setObjectName("muted");
   root->addWidget(source);
-  auto *automatic = new GlassSwitch;
-  automatic->setObjectName("checkUpdatesAtLaunch");
-  automatic->setAccessibleName("Rechercher les mises à jour au lancement");
-  automatic->setChecked(
-      QSettings().value("updates/checkAtLaunch", true).toBool());
-  auto *setting = new QHBoxLayout;
-  setting->addWidget(new QLabel("Vérifier automatiquement au lancement"), 1);
-  setting->addWidget(automatic);
-  root->addLayout(setting);
-  connect(automatic, &QCheckBox::toggled, this,
-          [](bool on) { QSettings().setValue("updates/checkAtLaunch", on); });
   status = new DiagnosticLabel;
   status->setObjectName("updateStatus");
   root->addWidget(status);

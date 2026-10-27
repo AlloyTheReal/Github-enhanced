@@ -27,6 +27,7 @@ class SettingsDialog : public GlassDialog {
     void profileDownloaded(const QJsonObject &profile);
     void layoutEditorRequested();
     void repositoriesRequested();
+    void checkUpdatesRequested();
     void appearancePreviewRequested(const QJsonObject &profile);
 
   private:

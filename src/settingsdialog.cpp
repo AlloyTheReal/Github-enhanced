@@ -69,6 +69,10 @@ QIcon navigationIcon(int index) {
         p.drawRoundedRect(QRectF(12, 3, 5, 6), 1, 1);
         p.drawRoundedRect(QRectF(3, 12, 6, 5), 1, 1);
         p.drawRoundedRect(QRectF(12, 12, 5, 5), 1, 1);
+    } else if (index == 7) {
+        p.drawArc(QRectF(3, 3, 14, 14), 35 * 16, 285 * 16);
+        p.drawLine(17, 2, 17, 7);
+        p.drawLine(12, 7, 17, 7);
     } else if (index == 4) {
         p.drawEllipse(QRectF(7, 3, 6, 6));
         p.drawArc(QRectF(3, 10, 14, 12), 0, 180 * 16);
@@ -190,6 +194,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     destination("Compte GitHub", 4);
     destination("Compte Codex", 6);
     destination("Accessibilité", 5);
+    destination("Mises à jour", 7);
     side->addWidget(caption("GitHub Enhanced", "rowTitle"));
     side->addWidget(caption("Préférences locales", "rowSubtitle"));
     root->addWidget(sidebar);
@@ -513,6 +518,25 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     connect(codex, &CodexClient::errorOccurred, this,
             [this](const QString &error) { codexStatus->setError(error); });
 
+    auto *updatesPage = newPage(&layout);
+    layout->addWidget(caption("Version installée : " + QCoreApplication::applicationVersion(), "rowTitle"));
+    auto *automaticUpdates = new GlassSwitch;
+    automaticUpdates->setObjectName("checkUpdatesAtLaunch");
+    automaticUpdates->setAccessibleName("Rechercher les mises à jour au lancement");
+    automaticUpdates->setChecked(QSettings().value("updates/checkAtLaunch", true).toBool());
+    layout->addWidget(settingRow("Vérifier au lancement", "Rechercher automatiquement une nouvelle version à l’ouverture de l’application.", automaticUpdates));
+    connect(automaticUpdates, &QCheckBox::toggled, this, [](bool enabled) {
+        QSettings().setValue("updates/checkAtLaunch", enabled);
+    });
+    auto *checkUpdates = new QPushButton("Rechercher…");
+    checkUpdates->setObjectName("checkForUpdates");
+    checkUpdates->setAccessibleName("Rechercher les mises à jour maintenant");
+    layout->addWidget(settingRow("Rechercher maintenant", "Vérifier la dernière version et consulter ses notes avant de l’installer.", checkUpdates));
+    connect(checkUpdates, &QPushButton::clicked, this, &SettingsDialog::checkUpdatesRequested);
+    layout->addWidget(caption("La vérification au lancement est enregistrée immédiatement.", "muted"));
+    layout->addStretch();
+    pages->addWidget(scrollPage(updatesPage));
+
     auto *footer = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     footer->setObjectName("settingsButtons");
     footer->button(QDialogButtonBox::Save)->setText("Enregistrer");
@@ -608,14 +632,15 @@ QJsonObject SettingsDialog::currentProfile() const {
 
 void SettingsDialog::navigate(int index) {
     static const QStringList titles{"Apparence",     "Couleurs",      "Disposition", "Bibliothèque de thèmes",
-                                    "Compte GitHub", "Accessibilité", "Compte Codex"};
+                                    "Compte GitHub", "Accessibilité", "Compte Codex", "Mises à jour"};
     static const QStringList subtitles{"Une interface à votre image.",
                                        "Une palette personnelle, avec un aperçu immédiat.",
                                        "Votre espace de travail, à votre façon.",
                                        "Retrouvez vos thèmes et ceux de la communauté.",
                                        "Retrouvez votre thème et votre disposition sur vos appareils.",
                                        "Adaptez les effets visuels à votre confort.",
-                                       "Connectez ChatGPT pour générer vos messages de commit."};
+                                       "Connectez ChatGPT pour générer vos messages de commit.",
+                                       "Gardez GitHub Enhanced à jour."};
     if (index < 0 || index >= titles.size())
         return;
     pageTitle->setText(titles[index]);

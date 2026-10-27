@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-set(GHE_VERSION "0.2.3" CACHE STRING "Application version")
+set(GHE_VERSION "0.2.4" CACHE STRING "Application version")
 if(DEFINED ENV{GITHUB_REF_TYPE} AND "$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" AND "$ENV{GITHUB_REF_NAME}" MATCHES "^v([0-9]+\.[0-9]+\.[0-9]+)$")
     set(GHE_VERSION "${CMAKE_MATCH_1}")
 endif()
@@ -16,7 +16,7 @@ set(INTEGRATION_SOURCES src/mergedialog.cpp src/mergedialog.h src/appupdater.cpp
     src/toolruntime.cpp src/toolruntime.h src/codexclient.cpp src/codexclient.h
     src/githubclient.cpp src/githubclient.h src/accountdialog.cpp src/accountdialog.h
     src/repobrowser.cpp src/repobrowser.h src/reposettings.cpp src/reposettings.h
-    src/layoutcanvas.cpp src/layoutcanvas.h)
+    src/layoutcanvas.cpp src/layoutcanvas.h src/desktopintegration.cpp src/desktopintegration.h)
 qt_add_executable(github-enhanced WIN32 MACOSX_BUNDLE
     src/main.cpp src/mainwindow.cpp src/mainwindow.h
     src/commandrunner.cpp src/commandrunner.h
@@ -49,9 +49,9 @@ endif()
 include(GNUInstallDirs)
 install(TARGETS github-enhanced BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(UNIX AND NOT APPLE)
-    install(FILES packaging/linux/io.githubenhanced.desktop.desktop DESTINATION share/applications)
-    install(FILES favicon.svg DESTINATION share/icons/hicolor/scalable/apps RENAME io.githubenhanced.desktop.svg)
-    install(FILES packaging/icons/github-enhanced.png DESTINATION share/icons/hicolor/1024x1024/apps RENAME io.githubenhanced.desktop.png)
+    install(FILES packaging/linux/io.githubenhanced.desktop.desktop DESTINATION share/applications RENAME io.githubenhanced.GitHubEnhanced.desktop)
+    install(FILES favicon.svg DESTINATION share/icons/hicolor/scalable/apps RENAME io.githubenhanced.GitHubEnhanced.svg)
+    install(FILES packaging/icons/github-enhanced.png DESTINATION share/icons/hicolor/1024x1024/apps RENAME io.githubenhanced.GitHubEnhanced.png)
 endif()
 if(WIN32 OR APPLE)
     qt_generate_deploy_app_script(TARGET github-enhanced OUTPUT_SCRIPT deploy_script NO_UNSUPPORTED_PLATFORM_ERROR)
@@ -68,7 +68,7 @@ if(BUILD_TESTING)
     qt_add_executable(ui-tests tests/ui_tests.cpp src/mainwindow.cpp src/mainwindow.h
         src/settingsdialog.cpp src/settingsdialog.h src/layoutdialog.cpp src/layoutdialog.h src/theme.cpp
         src/gitstatus.cpp src/commandrunner.cpp src/commandrunner.h src/visuals.cpp src/visuals.h src/glassstyle.cpp src/glassstyle.h ${INTEGRATION_SOURCES})
-    target_include_directories(ui-tests PRIVATE src)
+    target_include_directories(ui-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_link_libraries(ui-tests PRIVATE Qt6::Widgets Qt6::Network Qt6::Test)
     qt_add_resources(ui-tests themes PREFIX "/" FILES themes/midnight.json themes/daylight.json themes/forest.json themes/obsidian.json themes/graphite.json themes/paper.json themes/ocean.json favicon.svg packaging/icons/github-enhanced.png)
     if(MSVC)

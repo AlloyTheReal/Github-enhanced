@@ -1,12 +1,9 @@
-# GitHub Enhanced 0.2.3
+# GitHub Enhanced 0.2.4
 
-## Correctif du logo
+- Installe le lanceur et le logo de l’AppImage dans le profil utilisateur afin que Wayland reconnaisse l’application et affiche son icône.
+- Utilise un identifiant de bureau commun à la fenêtre, au lanceur et aux icônes Linux.
+- Remplace le raccourci « Couleurs » par « Paramètres ».
+- Ajoute une page « Mises à jour » dans les paramètres avec la recherche manuelle et la vérification automatique au lancement.
 
-- Associe la fenêtre à son lanceur Linux pour afficher le logo dans le bureau et la barre des tâches.
-- Ajoute le logo PNG aux paquets Linux, en complément de l’icône SVG.
-- Renseigne la classe de fenêtre du lanceur Linux.
-
-Le système de mise à jour est inchangé.
-
-Windows et macOS restent en bêta test. Les installateurs Windows et macOS ne sont pas signés.
+Windows et macOS restent en bêta test. Leurs installateurs ne sont pas signés.
 Les sommes de contrôle des fichiers distribués figurent dans `SHA256SUMS`.

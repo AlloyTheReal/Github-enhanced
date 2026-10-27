@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "appversion.h"
 #include "custompanel.h"
 #include "accountdialog.h"
 #include "layoutdialog.h"
@@ -27,6 +28,7 @@ private slots:
     void initTestCase() {
         QCoreApplication::setOrganizationName("GitHubEnhancedTests");
         QCoreApplication::setApplicationName("UI");
+        QCoreApplication::setApplicationVersion(GHE_APP_VERSION);
         QSettings::setDefaultFormat(QSettings::IniFormat);
     }
     void customPanelsPersistAndUndo(){
@@ -231,6 +233,12 @@ private slots:
         capture("settings-appearance",&dialog);
         navigate(4); QCOMPARE(pages->currentIndex(),4); capture("settings-github",&dialog);
         navigate(6); QCOMPARE(pages->currentIndex(),6); capture("settings-codex",&dialog);
+        navigate(7); QCOMPARE(pages->currentIndex(),7); capture("settings-updates",&dialog);
+        auto *automatic=dialog.findChild<QCheckBox *>("checkUpdatesAtLaunch");QVERIFY(automatic);
+        automatic->setChecked(false);QVERIFY(!QSettings().value("updates/checkAtLaunch").toBool());
+        automatic->setChecked(true);QVERIFY(QSettings().value("updates/checkAtLaunch").toBool());
+        QSignalSpy checks(&dialog,&SettingsDialog::checkUpdatesRequested);
+        dialog.findChild<QPushButton *>("checkForUpdates")->click();QCOMPARE(checks.count(),1);
         navigate(0);
         QTest::mouseClick(theme,Qt::LeftButton,{},QPoint(theme->width()-18,theme->height()/2));
         QTRY_VERIFY(theme->view()->isVisible());
@@ -291,8 +299,26 @@ private slots:
         QTest::mousePress(canvas,Qt::LeftButton,{},from);QMouseEvent dragEvent(QEvent::MouseMove,QPointF(to),QPointF(canvas->mapToGlobal(to)),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(canvas,&dragEvent);QTest::mouseRelease(canvas,Qt::LeftButton,{},to);
         QTRY_VERIFY(window.tabifiedDockWidgets(diff).contains(commit));undo->click();QTRY_VERIFY(!window.tabifiedDockWidgets(diff).contains(commit));
         editor->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
-        const auto original=QApplication::palette().color(QPalette::Window);QAction *preferences=window.findChild<QAction *>("preferencesAction");QVERIFY(preferences);bool previewed=false;
-        QTimer::singleShot(100,&window,[&]{auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());if(!settings)return;auto *combo=settings->findChild<QComboBox *>("themeSelector");if(!combo){settings->reject();return;}combo->setCurrentIndex(1);previewed=QTest::qWaitFor([]{return QApplication::palette().color(QPalette::Window)==QColor("#f5f5f7");},5000);settings->reject();});preferences->trigger();QVERIFY(previewed);QCOMPARE(QApplication::palette().color(QPalette::Window),original);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+        const auto original=QApplication::palette().color(QPalette::Window);auto *preferences=window.findChild<QToolButton *>("settingsButton");QVERIFY(preferences);QCOMPARE(preferences->text(),QString("Paramètres…"));bool previewed=false;
+        QTimer::singleShot(100,&window,[&]{auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());if(!settings)return;auto *combo=settings->findChild<QComboBox *>("themeSelector");if(!combo){settings->reject();return;}combo->setCurrentIndex(1);previewed=QTest::qWaitFor([]{return QApplication::palette().color(QPalette::Window)==QColor("#f5f5f7");},5000);settings->reject();});preferences->click();QVERIFY(previewed);QCOMPARE(QApplication::palette().color(QPalette::Window),original);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+    }
+    void settingsManualUpdateWorkflow() {
+        QTemporaryDir configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());
+        QSettings().setValue("updates/repository","invalid repository");
+        MainWindow window;window.show();bool opened=false;
+        QTimer::singleShot(100,&window,[&]{
+            auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+            if(!settings)return;
+            auto *navigation=settings->findChild<QListWidget *>("settingsNavigation");
+            for(int i=0;i<navigation->count();++i)if(navigation->item(i)->data(Qt::UserRole).toInt()==7)navigation->setCurrentRow(i);
+            settings->findChild<QPushButton *>("checkForUpdates")->click();
+            auto *updates=settings->findChild<QDialog *>("updateDialog");
+            opened=updates&&updates->parentWidget()==settings&&updates->windowModality()==Qt::WindowModal&&updates->isVisible();
+            if(updates)updates->close();
+            settings->reject();
+        });
+        window.findChild<QToolButton *>("settingsButton")->click();QVERIFY(opened);
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void commitFilesAndRecentRemoval(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());

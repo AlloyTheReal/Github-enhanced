@@ -279,7 +279,7 @@ void MainWindow::buildMenus() {
     auto *restoreToolbar=new MenuTextButton(quick);restoreToolbar->setObjectName("restoreToolbarButton");restoreToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);restoreToolbar->setText("Afficher la barre d’outils");restoreToolbar->setAutoRaise(true);restoreToolbar->setToolTip("Réafficher les commandes du dépôt");restoreToolbar->setAccessibleName(restoreToolbar->text());quickRow->addWidget(restoreToolbar);
     connect(restoreToolbar,&QToolButton::clicked,this,[this]{bool any=false;for(auto *action:toolbarItems)any|=action->isVisible();if(!any)for(auto *action:toolbarItems)action->setVisible(action->property("defaultVisible").toBool());mainToolbar->show();mainToolbar->raise();saveLayoutSettings();});
     connect(mainToolbar,&QToolBar::visibilityChanged,restoreToolbar,[restoreToolbar](bool visible){restoreToolbar->setVisible(!visible);});restoreToolbar->setVisible(mainToolbar->isHidden());QTimer::singleShot(0,this,[this,restoreToolbar]{restoreToolbar->setVisible(mainToolbar->isHidden());if(menuBar()->isNativeMenuBar()&&mainToolbar->isHidden())statusBar()->show();});
-    auto *colorsButton=new MenuTextButton(quick);colorsButton->setObjectName("colorsSettingsButton");colorsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);colorsButton->setText("Couleurs…");colorsButton->setAutoRaise(true);colorsButton->setToolTip("Modifier les couleurs et choisir une palette");colorsButton->setAccessibleName("Réglages des couleurs et palettes");quickRow->addWidget(colorsButton);connect(colorsButton,&QToolButton::clicked,colorsAction,&QAction::trigger);if(menuBar()->isNativeMenuBar()){quick->setParent(statusBar());statusBar()->addPermanentWidget(quick);connect(mainToolbar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible)statusBar()->show();});}else menuBar()->setCornerWidget(quick,Qt::TopRightCorner);
+    auto *colorsButton=new MenuTextButton(quick);colorsButton->setObjectName("settingsButton");colorsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);colorsButton->setText("Paramètres…");colorsButton->setAutoRaise(true);colorsButton->setToolTip("Ouvrir les paramètres de l’application");colorsButton->setAccessibleName("Paramètres de l’application");quickRow->addWidget(colorsButton);connect(colorsButton,&QToolButton::clicked,preferences,&QAction::trigger);if(menuBar()->isNativeMenuBar()){quick->setParent(statusBar());statusBar()->addPermanentWidget(quick);connect(mainToolbar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible)statusBar()->show();});}else menuBar()->setCornerWidget(quick,Qt::TopRightCorner);
     auto fitQuick=[this,quick,quickRow,restoreToolbar,colorsButton]{restoreToolbar->updateGeometry();colorsButton->updateGeometry();quickRow->invalidate();quick->adjustSize();quick->updateGeometry();if(!menuBar()->isNativeMenuBar())menuBar()->setCornerWidget(quick,Qt::TopRightCorner);};
     connect(mainToolbar,&QToolBar::visibilityChanged,quick,[quick,fitQuick](bool){QTimer::singleShot(0,quick,fitQuick);});QTimer::singleShot(0,quick,fitQuick);
 
@@ -993,6 +993,7 @@ void MainWindow::settingsDialog() { openSettings(false); }
 void MainWindow::openSettings(bool colors) {
     SettingsDialog dialog(profile(), this, &github, &codex); connect(&dialog, &SettingsDialog::profileDownloaded, this, &MainWindow::applyProfile);
     connect(&dialog, &SettingsDialog::appearancePreviewRequested, this, &MainWindow::previewAppearance);
+    connect(&dialog, &SettingsDialog::checkUpdatesRequested, this, [this]{checkUpdates(true);});
     connect(&dialog, &SettingsDialog::repositoriesRequested, this, [this] { QTimer::singleShot(0, this, &MainWindow::browseGitHub); });
     connect(&dialog, &SettingsDialog::layoutEditorRequested, this, [this] { QTimer::singleShot(0, this, &MainWindow::editLayout); }); if(colors)dialog.showColors();dialog.exec();
 }
@@ -1012,7 +1013,19 @@ void MainWindow::restoreCustomPanels(const QJsonArray &definitions){
 }
 
 void MainWindow::checkUpdates(bool manual){
-    if(manual){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}updater->check(manual);
+    if(manual){
+        auto *parent=QApplication::activeModalWidget();
+        if(!parent)parent=this;
+        if(!updateDialog){
+            updateDialog=new UpdateDialog(updater,parent);
+            connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);
+        }else if(parent!=updateDialog&&updateDialog->parentWidget()!=parent){
+            updateDialog->setParent(parent,updateDialog->windowFlags());
+        }
+        updateDialog->setWindowModality(parent==this?Qt::NonModal:Qt::WindowModal);
+        updateDialog->show();updateDialog->raise();
+    }
+    updater->check(manual);
 }
 void MainWindow::installUpdate(const QString &file){
     if(runner.busy()||indexer.busy()||github.busy()||pushCheck.busy()||codex.generating()){Diagnostics::showError(this,"Mise à jour","Une opération est en cours. Attendez sa fin avant d’installer la mise à jour.");return;}
