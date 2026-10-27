@@ -67,3 +67,9 @@ Un bouton unique de la barre d’outils affiche Fetch, Push, Pull, Publier ou Fu
 En cas de conflit, sélectionnez un fichier puis choisissez la version locale, la version entrante ou ouvrez-le dans votre éditeur avant de cliquer sur **Marquer résolu**. **Terminer la fusion** crée le commit lorsque tous les conflits sont résolus. **Annuler la fusion** appelle `git merge --abort`. Fermer le dialogue en conservant des conflits laisse la fusion en cours ; rouvrez-le pour continuer. Aucun push n’est réalisé par la fusion et aucun push forcé n’est utilisé.
 
 Cette logique s’appuie sur les mêmes primitives Git que [GitHub Desktop Linux](https://github.com/shiftkey/desktop/blob/linux/app/src/lib/git/merge.ts), avec une implémentation C++ indépendante.
+
+## Actualisation et saisie
+
+La surveillance locale vérifie silencieusement l’état Git et les références toutes les 2,5 secondes lorsque la fenêtre est active. Les vues sont actualisées uniquement si ces informations changent ; les contrôles de saisie restent actifs pendant les lectures Git. Le focus, la sélection du texte et les panneaux en onglets sont conservés. La surveillance attend la fermeture de l’éditeur de disposition.
+
+Un commit utilise le résumé et la description validés au clic. Si vous modifiez ces champs pendant sa création, le nouveau brouillon est conservé après la réussite du commit.

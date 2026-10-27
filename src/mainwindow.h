@@ -49,6 +49,12 @@ private:
     void restoreCustomPanels(const QJsonArray &definitions);
     CommandRunner runner;
     CommandRunner diffRunner;
+    CommandRunner repositoryProbe;
+    QByteArray repositorySnapshot;
+    bool quietRefresh=false;
+    void probeRepository();
+    bool layoutEditorOpen() const;
+    void refreshRepository(bool quiet);
     GitHubClient github;
     CodexClient codex;
     RepositoryIndex indexer;
@@ -110,6 +116,7 @@ private:
     QList<QAction *> repoActions;
     QAction *refreshAction;
     QPushButton *generateButton;
+    QPushButton *commitButton;
     DiagnosticLabel *generationStatus;
     int messageRevision=0;
     QByteArray stagedFingerprint;

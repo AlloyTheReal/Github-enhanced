@@ -10,7 +10,7 @@ Sous Windows, le paquet EXE/MSI vérifié est ouvert pour lancer l’installatio
 
 ## Publier une version
 
-Le workflow `release.yml` réutilise les builds Linux, Windows et macOS, récupère les paquets, produit `SHA256SUMS`, téléverse les assets dans une release de brouillon puis la publie seulement après le succès des trois builds. Il se déclenche lorsqu’un tag `vX.Y.Z` est poussé. La version CMake et la version embarquée suivent ce tag ; les builds locaux utilisent 0.2.0 par défaut. Aucun tag ni release distante n’a été créé pendant cette intervention.
+Le workflow `release.yml` réutilise les builds Linux, Windows et macOS, récupère les paquets, produit `SHA256SUMS`, téléverse les assets dans une release de brouillon puis la publie seulement après le succès des trois builds. Il se déclenche lorsqu’un tag `vX.Y.Z` est poussé. La version CMake et la version embarquée suivent ce tag ; les builds locaux utilisent 0.2.1 par défaut. Aucun tag ni release distante n’a été créé pendant cette intervention.
 
 Une release stable avec les fichiers appropriés doit être publiée pour proposer une mise à jour réelle. GitHub calcule le digest SHA-256 de chaque asset. Pour un fork, la clé locale `updates/repository` peut définir un autre `propriétaire/dépôt` ; cette source n’est pas importée depuis un thème ou une disposition.
 

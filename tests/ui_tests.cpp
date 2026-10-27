@@ -17,6 +17,10 @@ public:
     ~TestEnvironment(){if(existed)qputenv(key,value);else qunsetenv(key);}
 };
 
+static bool mainIdle(MainWindow &window){
+    return !window.findChild<CommandRunner *>()->busy()&&!window.findChild<RepositoryIndex *>()->busy()&&!window.findChild<GitHubClient *>()->busy()&&!window.findChild<PushPreflight *>()->busy();
+}
+
 class UiTests : public QObject {
     Q_OBJECT
 private slots:
@@ -33,7 +37,7 @@ private slots:
         editor->findChild<QPushButton *>("layoutUndo")->click();QCOMPARE(window.findChildren<CustomPanel *>().size(),0);
         editor->findChild<QPushButton *>("layoutRedo")->click();panels=window.findChildren<CustomPanel *>();QCOMPARE(panels.size(),1);QCOMPARE(panels.first()->findChild<QPlainTextEdit *>("customPanelNotes")->toPlainText(),"Notes conservées après redémarrage");
         if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))editor->grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/custom-panels.png");
-        for(auto *box:editor->findChildren<QDialogButtonBox *>())if(box->button(QDialogButtonBox::Save))box->button(QDialogButtonBox::Save)->click();QTest::qWait(30);QVERIFY(window.close());
+        for(auto *box:editor->findChildren<QDialogButtonBox *>())if(box->button(QDialogButtonBox::Save))box->button(QDialogButtonBox::Save)->click();QTest::qWait(30);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
         MainWindow restored;restored.show();auto *panel=restored.findChild<CustomPanel *>(id);QVERIFY(panel);QCOMPARE(panel->windowTitle(),"Carnet du projet");QCOMPARE(panel->findChild<QPlainTextEdit *>("customPanelNotes")->toPlainText(),"Notes conservées après redémarrage");QVERIFY(restored.close());
     }
     void palettePresetsRemainEditable(){
@@ -47,7 +51,7 @@ private slots:
         QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());Diagnostics::instance().setAdvanced(false);
         MainWindow window;window.show();auto *action=window.findChild<QAction *>("advancedModeAction");QVERIFY(action);QVERIFY(!action->isChecked());action->trigger();QVERIFY(Diagnostics::advanced());
         auto *operation=window.findChild<OperationDialog *>();auto *toggle=operation->findChild<QCheckBox *>("operationAdvanced");QVERIFY(toggle->isChecked());
-        toggle->click();QVERIFY(!action->isChecked());QVERIFY(!Diagnostics::advanced());QVERIFY(window.close());
+        toggle->click();QVERIFY(!action->isChecked());QVERIFY(!Diagnostics::advanced());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void repositoryWorkflow() {
         QTemporaryDir temporary;
@@ -87,7 +91,7 @@ private slots:
         QTRY_COMPARE(files->topLevelItem(0)->text(0), "A "); QTRY_VERIFY(files->isEnabled());
         auto *summary = window.findChild<QLineEdit *>("commitSummary"); QVERIFY(summary);
         summary->setText("Commit from the actual UI");
-        auto *commit = action("Créer le commit"); QVERIFY(commit); QVERIFY(commit->isEnabled()); commit->trigger();
+        auto *commit = action("Créer le commit"); QVERIFY(commit); QTRY_VERIFY(commit->isEnabled()); commit->trigger();
         QTRY_COMPARE(files->topLevelItemCount(), 0); QTRY_VERIFY(files->isEnabled());
         QVERIFY(summary->text().isEmpty());
         QVERIFY(git({"rev-parse", "--verify", "HEAD"}));
@@ -113,7 +117,7 @@ private slots:
         window.addDockWidget(Qt::RightDockWidgetArea, changes);
         auto *reset = action("Rétablir la disposition initiale"); QVERIFY(reset); reset->trigger();
         QCOMPARE(window.dockWidgetArea(changes), Qt::LeftDockWidgetArea);
-        QVERIFY(window.close());
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
 
     void layoutCustomization() {
@@ -199,7 +203,7 @@ private slots:
         QVERIFY(diff->isHidden());
         dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
         QVERIFY(!diff->isHidden()); QVERIFY(window.tabifiedDockWidgets(diff).contains(history));
-        QVERIFY(window.close());
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
         MainWindow restored; restored.show(); QTest::qWait(50);
         QCOMPARE(restored.dockWidgetArea(restored.findChild<QDockWidget *>("diff")), Qt::LeftDockWidgetArea);
         QCOMPARE(restored.findChild<QToolBar *>("mainToolbar")->actions().first()->objectName(), "tool-fetch");
@@ -272,7 +276,7 @@ private slots:
         QVERIFY(received["theme"].toObject()["id"].toString().startsWith("custom-"));
         QFile::remove(Theme::directory()+'/'+received["theme"].toObject()["id"].toString()+".json");
         QVERIFY(window.findChild<QWidget *>("dialogBackdrop")->isHidden());
-        QVERIFY(window.close());
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void directLayoutAndAppearancePreview() {
         QTemporaryDir configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());MainWindow window;window.show();QTest::qWait(80);
@@ -288,7 +292,7 @@ private slots:
         QTRY_VERIFY(window.tabifiedDockWidgets(diff).contains(commit));undo->click();QTRY_VERIFY(!window.tabifiedDockWidgets(diff).contains(commit));
         editor->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         const auto original=QApplication::palette().color(QPalette::Window);QAction *preferences=window.findChild<QAction *>("preferencesAction");QVERIFY(preferences);bool previewed=false;
-        QTimer::singleShot(100,&window,[&]{auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());if(!settings)return;auto *combo=settings->findChild<QComboBox *>("themeSelector");if(!combo){settings->reject();return;}combo->setCurrentIndex(1);QTest::qWait(140);previewed=QApplication::palette().color(QPalette::Window)==QColor("#f5f5f7");settings->reject();});preferences->trigger();QVERIFY(previewed);QCOMPARE(QApplication::palette().color(QPalette::Window),original);QVERIFY(window.close());
+        QTimer::singleShot(100,&window,[&]{auto *settings=qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());if(!settings)return;auto *combo=settings->findChild<QComboBox *>("themeSelector");if(!combo){settings->reject();return;}combo->setCurrentIndex(1);QTest::qWait(140);previewed=QApplication::palette().color(QPalette::Window)==QColor("#f5f5f7");settings->reject();});preferences->trigger();QVERIFY(previewed);QCOMPARE(QApplication::palette().color(QPalette::Window),original);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void commitFilesAndRecentRemoval(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());
@@ -310,13 +314,13 @@ private slots:
         if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")){
             auto *op=window.findChild<OperationDialog *>();op->begin("Clonage — aperçu de progression");op->step("Réception des objets Git");op->append("Receiving objects: 42% (42/100)\r");op->show();op->grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/operation-progress.png");op->finish(true);
         }
-        QVERIFY(window.close());
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void deletedCommitFileAndPatch(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repository.path());p.start("git",args);return p.waitForFinished(5000)&&p.exitCode()==0;};
         QVERIFY(git({"init","--initial-branch=main"}));QVERIFY(git({"config","user.name","Test"}));QVERIFY(git({"config","user.email","test@example.invalid"}));QVERIFY(git({"config","commit.gpgsign","false"}));QFile file(repository.filePath("deleted.txt"));QVERIFY(file.open(QIODevice::WriteOnly));file.write("previous content\n");file.close();QVERIFY(git({"add","--all"}));QVERIFY(git({"commit","-m","initial"}));QVERIFY(file.remove());QVERIFY(git({"add","--all"}));QVERIFY(git({"commit","-m","delete"}));
         MainWindow window;window.show();window.openRepository(repository.path());auto *history=window.findChild<QTreeWidget *>("commitHistory");auto *files=window.findChild<QTreeWidget *>("changedFiles");QTRY_COMPARE(history->topLevelItemCount(),2);QTRY_VERIFY(files->isEnabled());emit history->itemClicked(history->topLevelItem(0),0);
-        auto *editor=window.findChild<QPlainTextEdit *>("diffEditor");QTRY_VERIFY(editor->toPlainText().contains("previous content"));QVERIFY(window.findChild<QTreeWidget *>("commitFiles")->topLevelItem(0)->text(0).startsWith("D"));auto *view=window.findChild<QComboBox *>("commitFileView");view->setCurrentIndex(1);emit view->activated(1);QTRY_VERIFY(editor->toPlainText().contains("-previous content"));QTRY_VERIFY(files->isEnabled());QVERIFY(window.close());
+        auto *editor=window.findChild<QPlainTextEdit *>("diffEditor");QTRY_VERIFY(editor->toPlainText().contains("previous content"));QVERIFY(window.findChild<QTreeWidget *>("commitFiles")->topLevelItem(0)->text(0).startsWith("D"));auto *view=window.findChild<QComboBox *>("commitFileView");view->setCurrentIndex(1);emit view->activated(1);QTRY_VERIFY(editor->toPlainText().contains("-previous content"));QTRY_VERIFY(files->isEnabled());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void committedLfsPushReview_data(){QTest::addColumn<bool>("convert");QTest::newRow("cancel")<<false;QTest::newRow("convert-and-send")<<true;}
     void committedLfsPushReview(){
@@ -329,7 +333,7 @@ private slots:
         bool reviewed=false;QTimer reviewTimer;reviewTimer.setInterval(40);connect(&reviewTimer,&QTimer::timeout,&window,[&]{auto *review=qobject_cast<QDialog *>(QApplication::activeModalWidget());if(!review||review->objectName()!="lfsMigrationReview")return;auto *list=review->findChild<QListWidget *>("lfsCommittedFiles");reviewed=list&&list->count()==1&&list->item(0)->text().contains("Release.AppImage");if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR")){QDir().mkpath(qEnvironmentVariable("GHE_CAPTURE_DIR"));review->grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/lfs-migration.png");}reviewTimer.stop();if(convert&&reviewed)review->accept();else review->reject();});reviewTimer.start();QTimer::singleShot(12000,&window,[]{if(auto *d=qobject_cast<QDialog *>(QApplication::activeModalWidget()))d->reject();});action->click();QTRY_VERIFY_WITH_TIMEOUT(reviewed,15000);
         if(convert){QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),30000);const auto head=git({"rev-parse","HEAD"}).output.trimmed();QVERIFY(head!=original);QCOMPARE(git({"rev-parse","origin/main"}).output.trimmed(),head);QVERIFY(git({"show","HEAD:Release.AppImage"}).output.startsWith("version https://git-lfs.github.com/spec/v1"));QVERIFY(git({"for-each-ref","--format=%(objectname)","refs/github-enhanced/lfs-backups/"}).output.contains(original));}
         else{QTRY_VERIFY(files->isEnabled());QCOMPARE(git({"rev-parse","HEAD"}).output.trimmed(),original);QCOMPARE(git({"rev-parse","origin/main"}).output.trimmed(),published);QVERIFY(!QFileInfo::exists(path+"/.gitattributes"));}
-        QCOMPARE(QFileInfo(large.fileName()).size(),51LL*1024*1024);QCOMPARE(git({"hash-object","--no-filters","--","Release.AppImage"}).output.trimmed(),originalBlob);QTRY_VERIFY(files->isEnabled());QVERIFY(window.close());
+        QCOMPARE(QFileInfo(large.fileName()).size(),51LL*1024*1024);QCOMPARE(git({"hash-object","--no-filters","--","Release.AppImage"}).output.trimmed(),originalBlob);QTRY_VERIFY(files->isEnabled());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void workflowPushRecovery_data() {
         QTest::addColumn<bool>("consent"); QTest::newRow("authorize-and-retry")<<true; QTest::newRow("denied-no-retry")<<false;
@@ -369,7 +373,7 @@ private slots:
         if(consent){QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);}
         else {QVERIFY(recovery->isVisible());QCOMPARE(git({"--git-dir",remote,"rev-parse","main"}).output.trimmed(),oldHead);}
         QTRY_VERIFY(send->isEnabled()); QTRY_VERIFY(!github->busy());
-        QVERIFY(window.close());
+        QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void cleanWorkingTreeWithUnpushedCommit(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repository.path());p.start("git",args);return p.waitForFinished(10000)&&p.exitCode()==0;};
@@ -377,7 +381,7 @@ private slots:
         MainWindow window;window.show();window.openRepository(repository.path());auto *status=window.findChild<QLabel *>("syncStatus");auto *action=window.findChild<QPushButton *>("syncAction");auto *changed=window.findChild<QTreeWidget *>("changedFiles");QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("1 commit à envoyer"),10000);QTRY_VERIFY(action->isEnabled());QCOMPARE(changed->topLevelItemCount(),0);QVERIFY(window.findChild<QAction *>("tool-sync")->text().contains("Push origin"));QVERIFY(!window.findChild<QLabel *>("fileTitle")->text().contains("à jour"));
         if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))window.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/sync-ahead.png");
         QVERIFY(git({"switch","--detach"}));action->click();QTRY_VERIFY(status->text().contains("HEAD détachée"));QVERIFY(git({"switch","main"}));window.findChild<QPushButton *>("verifyRemote")->click();QTRY_VERIFY(status->text().contains("1 commit à envoyer"));QTRY_VERIFY(action->isEnabled());
-        action->click();QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);QTRY_VERIFY(window.findChild<QAction *>("tool-sync")->text().contains("Fetch origin"));QVERIFY(file.open(QIODevice::Append));file.write("not committed yet\n");file.close();window.findChild<QAction *>("tool-refresh")->trigger();QTRY_COMPARE(changed->topLevelItemCount(),1);QTRY_VERIFY(status->text().contains("modifications locales à commiter"));QVERIFY(!status->text().contains("Synchronisée avec"));QTRY_VERIFY(changed->isEnabled());QVERIFY(window.close());QVERIFY(QDir(remote).removeRecursively());
+        action->click();QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("Synchronisée avec origin/main"),10000);QTRY_VERIFY(window.findChild<QAction *>("tool-sync")->text().contains("Fetch origin"));QVERIFY(file.open(QIODevice::Append));file.write("not committed yet\n");file.close();window.findChild<QAction *>("tool-refresh")->trigger();QTRY_COMPARE(changed->topLevelItemCount(),1);QTRY_VERIFY(status->text().contains("modifications locales à commiter"));QVERIFY(!status->text().contains("Synchronisée avec"));QTRY_VERIFY(changed->isEnabled());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());QVERIFY(QDir(remote).removeRecursively());
     }
     void adaptiveSyncTracksOtherRemotesAndPulls(){
         QTemporaryDir data,config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());const auto local=data.filePath("local"),remote=data.filePath("remote.git"),peer=data.filePath("peer");QDir().mkpath(local);
@@ -386,7 +390,36 @@ private slots:
         QVERIFY(git(data.path(),{"init","--bare","--initial-branch=main",remote}).ok());QVERIFY(git(local,{"init","--initial-branch=main"}).ok());QVERIFY(configure(local));QFile file(local+"/file.txt");QVERIFY(file.open(QIODevice::WriteOnly));file.write("base\n");file.close();QVERIFY(git(local,{"add","--all"}).ok());QVERIFY(git(local,{"commit","-m","base"}).ok());QVERIFY(git(local,{"remote","add","upstream",remote}).ok());QVERIFY(git(local,{"push","upstream","main"}).ok());
         QVERIFY(file.open(QIODevice::Append));file.write("local\n");file.close();QVERIFY(git(local,{"commit","-am","local"}).ok());
         MainWindow window;window.show();window.openRepository(local);auto *action=window.findChild<QAction *>("tool-sync");auto *status=window.findChild<QLabel *>("syncStatus");QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Push upstream"),10000);QTRY_VERIFY(action->isEnabled());QVERIFY(!git(local,{"config","--get","branch.main.remote"}).ok());action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Fetch upstream"),10000);QTRY_VERIFY(action->isEnabled());
-        QVERIFY(git(data.path(),{"clone",remote,peer}).ok());QVERIFY(configure(peer));QFile incoming(peer+"/from-peer.txt");QVERIFY(incoming.open(QIODevice::WriteOnly));incoming.write("incoming\n");incoming.close();QVERIFY(git(peer,{"add","--all"}).ok());QVERIFY(git(peer,{"commit","-m","incoming"}).ok());QVERIFY(git(peer,{"push"}).ok());action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Pull upstream"),10000);QTRY_VERIFY(action->isEnabled());QVERIFY(status->text().contains("1 commit à récupérer"));action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Fetch upstream"),10000);QVERIFY(QFileInfo::exists(local+"/from-peer.txt"));QCOMPARE(git(local,{"rev-parse","HEAD"}).output,git(peer,{"rev-parse","HEAD"}).output);QTRY_VERIFY(action->isEnabled());QVERIFY(window.close());
+        QVERIFY(git(data.path(),{"clone",remote,peer}).ok());QVERIFY(configure(peer));QFile incoming(peer+"/from-peer.txt");QVERIFY(incoming.open(QIODevice::WriteOnly));incoming.write("incoming\n");incoming.close();QVERIFY(git(peer,{"add","--all"}).ok());QVERIFY(git(peer,{"commit","-m","incoming"}).ok());QVERIFY(git(peer,{"push"}).ok());action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Pull upstream"),10000);QTRY_VERIFY(action->isEnabled());QVERIFY(status->text().contains("1 commit à récupérer"));action->trigger();QTRY_VERIFY_WITH_TIMEOUT(action->text().contains("Fetch upstream"),10000);QVERIFY(QFileInfo::exists(local+"/from-peer.txt"));QCOMPARE(git(local,{"rev-parse","HEAD"}).output,git(peer,{"rev-parse","HEAD"}).output);QTRY_VERIFY(action->isEnabled());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+    }
+    void backgroundRefreshKeepsDraftFocus(){
+        QTemporaryDir repo,config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+        auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repo.path());p.start("git",args);p.waitForFinished(5000);return CommandResult{p.exitCode(),p.readAllStandardOutput(),p.readAllStandardError()};};
+        QVERIFY(git({"init","--initial-branch=main"}).ok());QVERIFY(git({"config","user.name","Focus Test"}).ok());QVERIFY(git({"config","user.email","focus@example.invalid"}).ok());QVERIFY(git({"config","commit.gpgsign","false"}).ok());QFile source(repo.filePath("file.txt"));QVERIFY(source.open(QIODevice::WriteOnly));source.write("base\n");source.close();QVERIFY(git({"add","--all"}).ok());QVERIFY(git({"commit","-m","base"}).ok());
+        MainWindow window;window.show();window.activateWindow();window.openRepository(repo.path());auto *summary=window.findChild<QLineEdit *>("commitSummary");auto *description=window.findChild<QPlainTextEdit *>("commitDescription");auto *files=window.findChild<QTreeWidget *>("changedFiles");QTRY_VERIFY(summary->isEnabled());QTRY_VERIFY(files->isEnabled());
+        QTimer *poll=nullptr;for(auto *timer:window.findChildren<QTimer *>())if(timer->interval()==2500)poll=timer;QVERIFY(poll);poll->setInterval(100);
+        auto *commitDock=window.findChild<QDockWidget *>("commit");auto *diffDock=window.findChild<QDockWidget *>("diff");window.tabifyDockWidget(diffDock,commitDock);commitDock->show();commitDock->raise();
+        summary->setText("Un brouillon conservé");summary->setSelection(3,6);summary->setFocus();QTRY_VERIFY(summary->hasFocus());QTest::qWait(650);QVERIFY2(summary->hasFocus(),"La vérification automatique vole le focus du résumé");QCOMPARE(summary->selectedText(),"brouil");
+        QVERIFY(source.open(QIODevice::Append));source.write("external change\n");source.close();QTRY_COMPARE_WITH_TIMEOUT(files->topLevelItemCount(),1,5000);QVERIFY(summary->hasFocus());QCOMPARE(summary->text(),"Un brouillon conservé");QCOMPARE(summary->selectedText(),"brouil");QVERIFY(!window.findChild<OperationDialog *>()->isVisible());
+        description->setPlainText("Description en cours");auto cursor=description->textCursor();cursor.setPosition(4);cursor.setPosition(11,QTextCursor::KeepAnchor);description->setTextCursor(cursor);description->setFocus();QTRY_VERIFY(description->hasFocus());window.findChild<QAction *>("tool-refresh")->trigger();QTest::qWait(400);QVERIFY(description->hasFocus());QCOMPARE(description->textCursor().selectedText(),"ription");QVERIFY(!commitDock->visibleRegion().isEmpty());
+        auto *commands=window.findChild<CommandRunner *>();QSignalSpy writes(commands,&CommandRunner::commandStarted);QTest::qWait(450);QCOMPARE(writes.count(),0);
+        bool changedDuringCommit=false,editableDuringCommit=false;connect(commands,&CommandRunner::commandStarted,&window,[&](const QString &,const QStringList &args){if(args.value(0)!="commit")return;editableDuringCommit=summary->isEnabled()&&description->isEnabled();summary->setText("Brouillon suivant");description->setPlainText("Détails suivants");changedDuringCommit=true;});
+        QAction *commit=nullptr;for(auto *action:window.findChildren<QAction *>())if(action->text()=="Créer le commit"){commit=action;break;}QVERIFY(commit);QTRY_VERIFY(commit->isEnabled());commit->trigger();QTRY_COMPARE(files->topLevelItemCount(),0);QTRY_VERIFY(mainIdle(window));QVERIFY(changedDuringCommit);QVERIFY(editableDuringCommit);QCOMPARE(summary->text(),"Brouillon suivant");QCOMPARE(description->toPlainText(),"Détails suivants");QCOMPARE(git({"log","-1","--format=%s"}).output.trimmed(),QByteArray("Un brouillon conservé"));QVERIFY(window.close());
+    }
+    void directLayoutPlacementAndOuterEdges(){
+        QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());MainWindow window;window.show();window.findChild<QAction *>("tool-layout")->trigger();auto *editor=window.findChild<LayoutDialog *>();auto *panels=editor->findChild<QListWidget *>("layoutPanels");auto *reference=editor->findChild<QComboBox *>("panelRelativeTo");
+        for(int i=0;i<panels->count();++i)if(panels->item(i)->data(Qt::UserRole).toString()=="history")panels->setCurrentRow(i);reference->setCurrentIndex(reference->findData("changes"));editor->findChild<QToolButton *>("placePanelSide2")->click();auto *history=window.findChild<QDockWidget *>("history");auto *changes=window.findChild<QDockWidget *>("changes");QVERIFY(window.tabifiedDockWidgets(changes).contains(history));QCOMPARE(reference->currentData().toString(),"changes");
+        auto *floating=editor->findChild<QPushButton *>("togglePanelFloating");floating->click();QVERIFY(history->isFloating());floating->click();QVERIFY(!history->isFloating());
+        auto *canvas=editor->findChild<LayoutCanvas *>();QTest::qWait(50);auto rect=canvas->panelRect("diff");QVERIFY(!rect.isEmpty());const auto start=rect.center().toPoint(),end=QPoint(canvas->width()/2,38);QTest::mousePress(canvas,Qt::LeftButton,Qt::NoModifier,start);QTest::mouseMove(canvas,end,30);QTest::mouseRelease(canvas,Qt::LeftButton,Qt::NoModifier,end);auto *diff=window.findChild<QDockWidget *>("diff");QCOMPARE(window.dockWidgetArea(diff),Qt::TopDockWidgetArea);editor->findChild<QPushButton *>("layoutUndo")->click();QCOMPARE(window.dockWidgetArea(diff),Qt::RightDockWidgetArea);
+        auto *tabs=editor->findChild<QTabWidget *>();for(auto *button:editor->findChildren<QToolButton *>())if(button->text()=="Dimensions exactes")button->click();auto *width=editor->findChild<QSpinBox *>("panelWidth");qobject_cast<QScrollArea *>(tabs->widget(0))->ensureWidgetVisible(width);editor->activateWindow();auto *widthText=width->findChild<QLineEdit *>();widthText->setFocus();widthText->setText("321 px");widthText->setSelection(1,1);QTRY_VERIFY(widthText->hasFocus());QTest::qWait(450);QCOMPARE(widthText->text(),"321 px");QCOMPARE(widthText->selectedText(),"2");
+        tabs->setCurrentIndex(1);auto *search=editor->findChild<QLineEdit *>("layoutCommandSearch");search->setText("push");auto *tools=editor->findChild<QListWidget *>("toolbarItems");int visible=0;for(int i=0;i<tools->count();++i)if(!tools->item(i)->isHidden()){++visible;QVERIFY(tools->item(i)->text().contains("push",Qt::CaseInsensitive));}QCOMPARE(visible,1);search->clear();editor->reject();QTest::qWait(20);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
+    }
+    void layoutRowsFollowFontSize_data(){QTest::addColumn<int>("points");for(int size:{11,16,22})QTest::newRow(qPrintable(QString::number(size)))<<size;}
+    void layoutRowsFollowFontSize(){
+        QFETCH(int,points);QTemporaryDir config;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());QSettings().setValue("fontSize",points);
+        MainWindow window;window.show();window.findChild<QAction *>("tool-layout")->trigger();auto *editor=window.findChild<LayoutDialog *>();QVERIFY(editor);auto *list=editor->findChild<QListWidget *>("toolbarItems");auto *tabs=editor->findChild<QTabWidget *>();tabs->setCurrentIndex(1);QTest::qWait(50);
+        for(int i=0;i<list->count();++i){const auto rect=list->visualItemRect(list->item(i));QVERIFY2(rect.height()>=QFontMetrics(list->font()).height()+12,"Une ligne est trop petite pour la police");if(i+1<list->count())QVERIFY(rect.bottom()<list->visualItemRect(list->item(i+1)).top());}
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))editor->grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/layout-commands-"+QString::number(points)+".png");editor->reject();QTest::qWait(20);QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void scrollingSurvivesRefresh(){
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());QProcess git;git.setWorkingDirectory(repository.path());git.start("git",{"init","--initial-branch=main"});QVERIFY(git.waitForFinished(5000)&&git.exitCode()==0);
@@ -394,7 +427,7 @@ private slots:
         for(int i=0;i<60;++i){QFile f(repository.filePath(QString("file-%1.txt").arg(i,3,10,QChar('0'))));QVERIFY(f.open(QIODevice::WriteOnly));f.write(text);}
         MainWindow window;window.show();window.openRepository(repository.path());auto *files=window.findChild<QTreeWidget *>("changedFiles");auto *diff=window.findChild<QPlainTextEdit *>("diffEditor");QTRY_COMPARE(files->topLevelItemCount(),60);QTRY_VERIFY(files->isEnabled());QTRY_VERIFY(diff->verticalScrollBar()->maximum()>100);QVERIFY(qobject_cast<CapsuleScrollBar *>(diff->verticalScrollBar()));
         files->verticalScrollBar()->setValue(200);diff->verticalScrollBar()->setValue(150);const auto fv=files->verticalScrollBar()->value(),dv=diff->verticalScrollBar()->value();const auto original=diff->toPlainText();window.findChild<QAction *>("tool-refresh")->trigger();QTest::qWait(350);QTRY_VERIFY(files->isEnabled());QCOMPARE(files->verticalScrollBar()->value(),fv);QCOMPARE(diff->verticalScrollBar()->value(),dv);QCOMPARE(diff->toPlainText(),original);
-        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))window.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/capsule-scroll.png");QVERIFY(window.close());
+        if(!qEnvironmentVariableIsEmpty("GHE_CAPTURE_DIR"))window.grab().save(qEnvironmentVariable("GHE_CAPTURE_DIR")+"/capsule-scroll.png");QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
     void generatedCommitIsDraftOnly_data(){QTest::addColumn<QString>("scenario");for(const auto &name:{"normal","large","stale","cancel"})QTest::newRow(name)<<QString(name);}
     void generatedCommitIsDraftOnly(){
@@ -409,10 +442,10 @@ private slots:
         QFile file(repository.path()+"/sample.txt");QVERIFY(file.open(QIODevice::WriteOnly));file.write(scenario=="large"?QByteArray(400000,'x')+"\n":QByteArray("sample\n"));file.close();QVERIFY(git({"add","--","sample.txt"}));
         MainWindow window;window.show();window.openRepository(repository.path());auto *files=window.findChild<QTreeWidget *>("changedFiles");QTRY_COMPARE(files->topLevelItemCount(),1);QTRY_VERIFY(files->isEnabled());
         auto *button=window.findChild<QPushButton *>("generateCommitMessage");auto *summary=window.findChild<QLineEdit *>("commitSummary");auto *status=window.findChild<QLabel *>("generationStatus");auto *codex=window.findChild<CodexClient *>();QVERIFY(button&&summary&&codex&&status);
-        summary->setText("Brouillon conservé");button->click();
+        summary->setText("Brouillon conservé");QTRY_VERIFY(button->isEnabled());button->click();
         if(scenario=="normal"||scenario=="large")QTRY_COMPARE_WITH_TIMEOUT(summary->text(),"Ajouter le fichier de test",5000);
         else {QTRY_VERIFY(codex->generating());if(scenario=="stale"){QVERIFY(file.open(QIODevice::WriteOnly));file.write("different\n");file.close();QVERIFY(git({"add","--","sample.txt"}));QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("changé"),5000);}else{button->click();QTest::qWait(600);}QCOMPARE(summary->text(),"Brouillon conservé");}
-        QVERIFY(!git({"rev-parse","--verify","HEAD"}));QTRY_VERIFY(files->isEnabled());QVERIFY(window.close());
+        QVERIFY(!git({"rev-parse","--verify","HEAD"}));QTRY_VERIFY(files->isEnabled());QTRY_VERIFY(mainIdle(window));QVERIFY(window.close());
     }
 };
 QTEST_MAIN(UiTests)

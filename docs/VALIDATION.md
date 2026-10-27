@@ -89,3 +89,11 @@ Aucune release distante n’a été créée, aucun tag poussé et aucun téléch
 L’AppImage Linux 0.2.0 a été générée et son démarrage contrôlé avec Qt offscreen, en mode extraction et avec un profil isolé. Les archives binaire et source 0.2.0 sont également générées. La version embarquée affiche 0.2.0.
 
 Accès aux réglages : restauration de la barre d’outils vérifiée avec celle-ci masquée, barre d’état masquée et profil rechargé ; ouverture directe de la page Couleurs vérifiée. Captures contrôlées : `toolbar-recovery.png` et `colors-shortcut.png`.
+
+## Correction 0.2.1 — focus et disposition
+
+Les trois suites CTest passent : tests du cœur, 27 cas UI et 53 cas d’intégration des comptes, avec Git LFS réel activé. Les opérations Git utilisent uniquement des dépôts temporaires ; les écritures GitHub restent simulées.
+
+Les nouveaux scénarios vérifient le focus, la sélection et le brouillon lors des changements externes, l’absence de commandes de rafraîchissement global lorsque le dépôt est inchangé, l’absence de fenêtre de progression lors de la surveillance et la conservation des modifications saisies pendant un commit. Les tests de disposition couvrent le placement direct, les onglets, le détachement, l’ancrage sur les bords extérieurs, l’annulation, la saisie des dimensions sans écrasement et la recherche de commandes. Les hauteurs de ligne et l’absence de chevauchement sont contrôlées à 11, 16 et 22 points.
+
+Les captures de l’éditeur ont été renouvelées. L’AppImage 0.2.1 est générée et son démarrage est vérifié en mode extraction/offscreen avec un profil isolé ; les archives Linux et source 0.2.1 sont générées. La version embarquée affiche 0.2.1.

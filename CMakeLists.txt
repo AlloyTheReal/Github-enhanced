@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-set(GHE_VERSION "0.2.0" CACHE STRING "Application version")
+set(GHE_VERSION "0.2.1" CACHE STRING "Application version")
 if(DEFINED ENV{GITHUB_REF_TYPE} AND "$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" AND "$ENV{GITHUB_REF_NAME}" MATCHES "^v([0-9]+\.[0-9]+\.[0-9]+)$")
     set(GHE_VERSION "${CMAKE_MATCH_1}")
 endif()

@@ -60,8 +60,9 @@ QDockWidget *dock(QMainWindow *window, const QString &title, const QString &id, 
 }
 }
 
-MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(this), indexer(&runner,this), syncMonitor(this), pushCheck(this) {
+MainWindow::MainWindow() : runner(this), diffRunner(this), repositoryProbe(this), github(this), codex(this), indexer(&runner,this), syncMonitor(this), pushCheck(this) {
     runner.setEnvironmentRemovals({"GH_TOKEN","GITHUB_TOKEN","GH_ENTERPRISE_TOKEN","GITHUB_ENTERPRISE_TOKEN"});
+    repositoryProbe.setObjectName("repositoryProbe");repositoryProbe.setTimeoutMilliseconds(15000);repositoryTimer.setParent(this);repositoryTimer.setObjectName("repositoryPollTimer");
     updater=new AppUpdater(this);
     connect(updater,&AppUpdater::checked,this,[this](const AppUpdate &update,const QString &,bool manual){if(!manual&&update.available()){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}});
     setWindowTitle("GitHub Enhanced"); resize(1200, 780); setMinimumSize(860, 580);
@@ -92,12 +93,12 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(t
     connect(&pushCheck,&PushPreflight::detail,operation,&OperationDialog::step);
     connect(&pushCheck,&PushPreflight::output,operation,&OperationDialog::append);
     connect(&pushCheck,&PushPreflight::busyChanged,this,[this](bool){updateActions();});
-    connect(&indexer,&RepositoryIndex::detail,this,[this](const QString &text){if(!operation->running())beginOperation("Préparation du commit");operation->step(text);});
-    connect(&repositoryTimer,&QTimer::timeout,this,[this]{if(!property("installingUpdate").toBool()&&isActiveWindow()&&!QApplication::activeModalWidget()&&!pushCheck.busy()&&!runner.busy()&&!github.busy()&&!indexer.busy()&&!refreshing&&!codex.generating())refresh();});
+    connect(&indexer,&RepositoryIndex::detail,this,[this](const QString &text){if(quietRefresh)return;if(!operation->running())beginOperation("Préparation du commit");operation->step(text);});
+    connect(&repositoryTimer,&QTimer::timeout,this,&MainWindow::probeRepository);
     repositoryTimer.start(2500);
     connect(&syncMonitor,&RepositorySync::updated,this,&MainWindow::updateSyncStatus);
     connect(&syncMonitor,&RepositorySync::busyChanged,this,[this](bool busy){verifyRemote->setEnabled(!busy&&!repository.isEmpty());verifyRemote->setText(busy?"Vérification…":"Vérifier le distant");if(syncToolbarAction){syncToolbarAction->setEnabled(!busy&&!repository.isEmpty()&&!runner.busy());if(busy)syncToolbarAction->setText("Fetch en cours…");else updateSyncStatus(syncState);}updateActions();});
-    connect(&remoteTimer,&QTimer::timeout,this,[this]{if(!property("installingUpdate").toBool()&&!QApplication::activeModalWidget()&&!repository.isEmpty()&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!syncMonitor.busy())syncMonitor.inspect(repository,true);});remoteTimer.start(60000);
+    connect(&remoteTimer,&QTimer::timeout,this,[this]{if(!layoutEditorOpen()&&!property("installingUpdate").toBool()&&!QApplication::activeModalWidget()&&!repository.isEmpty()&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!syncMonitor.busy())syncMonitor.inspect(repository,true);});remoteTimer.start(60000);
     auto *activityButton=new QPushButton("Activité");activityButton->setObjectName("operationActivity");statusBar()->addPermanentWidget(activityButton);connect(activityButton,&QPushButton::clicked,operation,[this]{operation->show();operation->raise();});
     if (settings.value("interfaceRevision", 0).toInt() >= 2) {
         if (settings.contains("geometry")) restoreGeometry(settings.value("geometry").toByteArray());
@@ -110,7 +111,7 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), github(this), codex(t
     recent = settings.value("recent").toStringList(); rebuildRecent();
     connect(&runner, &CommandRunner::busyChanged, this, [this](bool busy) {
         if(!busy&&!pushCheck.busy()&&!github.busy()&&!indexer.busy()&&!codex.generating()&&operation->running())operation->finish(indexError.isEmpty(),indexError);
-        updateActions(); statusBar()->showMessage(busy ? "Opération en cours…" : repository.isEmpty() ? "Choisissez un dépôt" : repository);
+        updateActions(); if(!quietRefresh)statusBar()->showMessage(busy ? "Opération en cours…" : repository.isEmpty() ? "Choisissez un dépôt" : repository);
     });
     connect(&github,&GitHubClient::busyChanged,this,[this](bool busy){if(!busy&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!codex.generating()&&operation->running())operation->finish(indexError.isEmpty(),indexError);updateActions();});
     updateActions();
@@ -211,7 +212,7 @@ void MainWindow::buildInterface() {
     diffTitle = label("Aucune modification", "fileTitle"); diffTitle->setTextFormat(Qt::PlainText);
     diffTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred); headerLayout->addWidget(diffTitle, 1);
     auto *workingView = new QPushButton("Modifications actuelles");workingView->setObjectName("workingChanges");headerLayout->addWidget(workingView);
-    connect(workingView,&QPushButton::clicked,this,[this]{selectedCommit.clear();commitBrowser->hide();showDiff();});
+    connect(workingView,&QPushButton::clicked,this,[this]{selectedCommit.clear();commitBrowser->hide();diffDock->raise();showDiff();});
     diffLayout->addWidget(diffHeader);
 
     diff = new QPlainTextEdit; diff->setObjectName("diffEditor"); diff->setReadOnly(true);
@@ -243,7 +244,7 @@ void MainWindow::buildInterface() {
     files->setRootIsDecorated(false); files->setHeaderHidden(true); files->setColumnWidth(0, 38);
     files->setSelectionMode(QAbstractItemView::ExtendedSelection);
     files->header()->setSectionResizeMode(1, QHeaderView::Stretch); files->setAccessibleName("Fichiers modifiés"); changesLayout->addWidget(files);
-    connect(files, &QTreeWidget::itemSelectionChanged, this, [this]{selectedCommit.clear();commitBrowser->hide();showDiff();});
+    connect(files, &QTreeWidget::itemSelectionChanged, this, [this]{selectedCommit.clear();commitBrowser->hide();diffDock->raise();showDiff();});
     changesDock = dock(this, "Modifications", "changes", changesWidget, Qt::LeftDockWidgetArea); changesDock->setMinimumWidth(250);
 
     auto *commitWidget = new QWidget; commitWidget->setObjectName("sidebar"); auto *commitLayout = new QVBoxLayout(commitWidget);
@@ -254,7 +255,7 @@ void MainWindow::buildInterface() {
     commitLayout->addWidget(summary); commitLayout->addWidget(description);
     generateButton=button("Générer avec Codex",commitLayout,[this]{generateMessage();},this);generateButton->setObjectName("generateCommitMessage");generateButton->setToolTip("Envoie un résumé des modifications à votre session Codex pour proposer un message. Aucun commit n’est créé automatiquement.");
     generationStatus=new DiagnosticLabel;generationStatus->setWordWrap(true);generationStatus->setObjectName("generationStatus");commitLayout->addWidget(generationStatus);
-    auto *commitButton = button("Créer le commit", commitLayout, [this] { commit(); }, this, true); commitButton->setObjectName("primary");
+    commitButton = button("Créer le commit", commitLayout, [this] { commit(); }, this, true); commitButton->setObjectName("primary");
     commitButton->setToolTip("Créer un commit avec tous les fichiers modifiés");
     commitDock = dock(this, "Commit", "commit", commitWidget, Qt::LeftDockWidgetArea);
     activity = new QPlainTextEdit; activity->setReadOnly(true); activity->setFrameShape(QFrame::NoFrame);
@@ -397,7 +398,7 @@ void MainWindow::openRepository(const QString &path) {
         if (!r.ok()) { Diagnostics::showError(this, "Dépôt inaccessible", r.message()); return; }
         auto root = r.output;
         if (root.endsWith('\n')) root.chop(1);
-        repository = QString::fromUtf8(root);historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
+        repository = QString::fromUtf8(root);repositorySnapshot.clear();historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
         branch.clear();changes.clear();localStatusKnown=false; files->clear(); history->clear(); diff->clear();
         summary->clear(); description->clear();
         recent.removeAll(repository); recent.prepend(repository); while (recent.size() > 20) recent.removeLast();
@@ -415,14 +416,16 @@ void MainWindow::runGit(const QStringList &args, CommandRunner::Callback callbac
 void MainWindow::removeRecent(const QString &path){recent.removeAll(path);settings.setValue("recent",recent);rebuildRecent();}
 void MainWindow::beginOperation(const QString &title){indexError.clear();operation->begin(title);}
 
-void MainWindow::refresh() {
+void MainWindow::refresh() { refreshRepository(false); }
+
+void MainWindow::refreshRepository(bool quiet) {
     if (repository.isEmpty() || refreshing || indexer.busy() || pushCheck.busy()) return;
-    refreshing=true;
+    quietRefresh=quiet;refreshing=true;
     indexer.prepare(repository,[this](QString error){
         const bool newError=error!=indexError;indexError=error;
         if(!error.isEmpty()){
             statusBar()->showMessage(Diagnostics::explain(error).title);if(newError)log(error);
-            if(newError||operation->running()){if(!operation->running())operation->begin("Préparation du commit");operation->finish(false,error);}
+            if(!quietRefresh&&(newError||operation->running())){if(!operation->running())operation->begin("Préparation du commit");operation->finish(false,error);}
         }
         refreshViews();
     });
@@ -443,7 +446,7 @@ void MainWindow::refreshViews() {
             if(!files->currentItem()&&files->topLevelItemCount())files->setCurrentItem(files->topLevelItem(0));
             files->verticalScrollBar()->setValue(scroll);
         }
-        changeCount->setText(indexError.isEmpty()?QString("%1 fichier(s) prêt(s) pour le commit").arg(changes.size()):"Préparation interrompue · voir Activité");
+        changeCount->setText(indexError.isEmpty()?QString("%1 fichier(s) prêt(s) pour le commit").arg(changes.size()):"Préparation interrompue · voir le journal");
         updateSyncStatus(syncState);
         if(selectedCommit.isEmpty())showDiff();
     });
@@ -453,15 +456,13 @@ void MainWindow::refreshViews() {
     });
     runGit({"for-each-ref", "--format=%(refname:short)", "refs/heads/"}, [this, path](const CommandResult &r) {
         if (path != repository) return;
-        const QSignalBlocker block(branches); branches->clear();
-        if (branch.isEmpty()) branches->addItem("HEAD détachée", QString());
-        else branches->addItem(branch, branch);
-        for (const auto &b : QString::fromUtf8(r.output).split('\n', Qt::SkipEmptyParts)) if (b != branch) branches->addItem(b, b);
-        branches->setCurrentIndex(0);
+        QStringList choices;if(!branch.isEmpty())choices<<branch;for(const auto &name:QString::fromUtf8(r.output).split('\n',Qt::SkipEmptyParts))if(name!=branch)choices<<name;
+        QStringList previous;for(int i=0;i<branches->count();++i)previous<<branches->itemData(i).toString();if(previous==choices)return;
+        const QSignalBlocker block(branches);branches->clear();if(branch.isEmpty())branches->addItem("HEAD détachée",QString());for(const auto &name:choices)branches->addItem(name,name);branches->setCurrentIndex(0);
     });
     runGit({"log", "-n", "150", "--format=%H%x00%h%x00%an%x00%ar%x00%s%x00"}, [this, path](const CommandResult &r) {
         if (path != repository) return;
-        refreshing=false;syncMonitor.inspect(path,false);
+        refreshing=false;quietRefresh=false;syncMonitor.inspect(path,false);
         if(r.output==historySnapshot)return;
         historySnapshot=r.output;const auto oldScroll=history->verticalScrollBar()->value();const auto oldSelection=history->currentItem()?history->currentItem()->data(0,Qt::UserRole).toString():QString();
         const QSignalBlocker block(history);history->clear();
@@ -479,7 +480,9 @@ void MainWindow::refreshViews() {
 void MainWindow::updateActions() {
     bool enabled = !property("installingUpdate").toBool() && !repository.isEmpty() && !runner.busy() && !indexer.busy() && !github.busy() && !pushCheck.busy();
     for (auto *a : repoActions) a->setEnabled(enabled&&(!QStringList{"Push","Pull","Fetch"}.contains(a->text())||!syncMonitor.busy()));
-    branches->setEnabled(enabled); commitDock->widget()->setEnabled(enabled); changesDock->widget()->setEnabled(enabled);
+    const bool canEdit=!property("installingUpdate").toBool()&&!repository.isEmpty();
+    branches->setEnabled(enabled);commitDock->widget()->setEnabled(canEdit);changesDock->widget()->setEnabled(canEdit);
+    commitButton->setEnabled(enabled);generateButton->setEnabled(enabled||codex.generating());
     repositories->setEnabled(!runner.busy());
     syncAction->setEnabled(enabled&&!syncMonitor.busy());
     if(syncToolbarAction)syncToolbarAction->setEnabled(enabled&&!syncMonitor.busy()&&!QStringList{"unborn","detached"}.contains(syncState.kind));
@@ -625,13 +628,13 @@ void MainWindow::authorizeWorkflowPermission(const QString &path,const QStringLi
 
 void MainWindow::commit() {
     if (repository.isEmpty() || runner.busy()) return;
-    auto message = summary->text().trimmed();
+    const auto originalSummary=summary->text();auto message = originalSummary.trimmed();
     if (message.isEmpty()) { summary->setFocus(); statusBar()->showMessage("Saisissez un résumé du commit.", 5000); return; }
     const auto body=description->toPlainText();beginOperation("Création du commit");
-    indexer.prepare(repository,[this,message,body](QString error){
+    indexer.prepare(repository,[this,message,body,originalSummary](QString error){
         if(!error.isEmpty()){indexError=error;operation->finish(false,error);updateActions();return;}
         QStringList args{"commit","-m",message};if(!body.trimmed().isEmpty())args<<"-m"<<body;
-        runGit(args,[this](const CommandResult &r){log(r.message());if(r.ok()){summary->clear();description->clear();}else {indexError=r.message();operation->finish(false,indexError);}refresh();});
+        runGit(args,[this,message,body,originalSummary](const CommandResult &r){log(r.message());if(r.ok()){if(summary->text()==originalSummary)summary->clear();if(description->toPlainText()==body)description->clear();}else {indexError=r.message();operation->finish(false,indexError);}refresh();});
     });
 }
 
@@ -644,7 +647,6 @@ void MainWindow::showDiff() {
     for (const auto &c : changes) if (c.path == file) change = c;
     if(diffTitle->text()!=file)diff->clear();
     diffTitle->setText(file);
-    diffDock->raise();
     if (change.untracked()) {
         QFileInfo info(QDir(repository).filePath(file));
         if (info.isSymLink()) { showText("Lien symbolique → " + info.symLinkTarget()); return; }
@@ -1035,3 +1037,18 @@ void MainWindow::installUpdate(const QString &file){
 }
 
 void MainWindow::mergeBranches(){if(repository.isEmpty()||runner.busy()||indexer.busy()||pushCheck.busy())return;MergeDialog dialog(repository,syncState.upstream,this);dialog.exec();refresh();syncMonitor.inspect(repository,true);}
+
+void MainWindow::probeRepository(){
+    if(repository.isEmpty()||layoutEditorOpen()||!isActiveWindow()||QApplication::activeModalWidget()||property("installingUpdate").toBool()||runner.busy()||repositoryProbe.busy()||refreshing||indexer.busy()||pushCheck.busy()||github.busy()||codex.generating())return;
+    const auto path=repository;
+    repositoryProbe.run("git",{"--no-optional-locks","status","--porcelain=v2","--branch","-z","--untracked-files=all"},path,[this,path](const CommandResult &status){
+        if(repository!=path)return;
+        const auto signature=status.ok()?status.output:status.error;
+        repositoryProbe.run("git",{"for-each-ref","--format=%(refname)%00%(objectname)","refs/heads/","refs/remotes/"},path,[this,path,signature](const CommandResult &refs){
+            if(repository!=path||layoutEditorOpen()||runner.busy()||refreshing||indexer.busy()||pushCheck.busy()||github.busy()||codex.generating()||QApplication::activeModalWidget())return;
+            const auto next=signature+'\0'+refs.output;if(next==repositorySnapshot)return;repositorySnapshot=next;refreshRepository(true);
+        });
+    });
+}
+
+bool MainWindow::layoutEditorOpen()const{for(auto *editor:findChildren<LayoutDialog *>())if(editor->isVisible())return true;return false;}

@@ -14,7 +14,7 @@ LayoutCanvas::LayoutCanvas(QMainWindow *w, const QList<QDockWidget *> &p, QWidge
                       "la vue sélectionnée.");
 }
 QRectF LayoutCanvas::frame() const {
-    return QRectF(16, 36, width() - 32, height() - 80);
+    const auto line=fontMetrics().height();return QRectF(16,line+16,width()-32,qMax(40,height()-2*line-36));
 }
 QList<QPair<QDockWidget *, QRectF>> LayoutCanvas::visibleRects() const {
     QList<QPair<QDockWidget *, QRectF>> result;
@@ -72,7 +72,7 @@ void LayoutCanvas::paintEvent(QPaintEvent *) {
     const auto f = frame();
     auto muted = palette().color(QPalette::PlaceholderText), accent = palette().color(QPalette::Highlight);
     p.setPen(muted);
-    p.drawText(QRectF(18, 3, width() - 36, 24), Qt::AlignLeft, "Glissez les vues et les séparateurs");
+    p.drawText(QRectF(18,3,width()-36,fontMetrics().height()+4),Qt::AlignLeft,p.fontMetrics().elidedText("Déplacer les panneaux",Qt::ElideRight,width()-36));
     p.setBrush(palette().color(QPalette::Base));
     p.setPen(palette().color(QPalette::Mid));
     p.drawRoundedRect(f, 14, 14);
@@ -110,20 +110,19 @@ void LayoutCanvas::paintEvent(QPaintEvent *) {
                 r.setHeight(r.height() / 2);
             if (target.second == 3)
                 r.setTop(r.center().y());
+            if(target.second>=5){r=f.adjusted(5,5,-5,-5);if(target.second==5)r.setWidth(qMin(qreal(80),r.width()/4));if(target.second==6)r.setLeft(r.right()-qMin(qreal(80),r.width()/4));if(target.second==7)r.setHeight(qMin(qreal(50),r.height()/4));if(target.second==8)r.setTop(r.bottom()-qMin(qreal(50),r.height()/4));}
             auto shade = accent;
             shade.setAlpha(45);
             p.setBrush(shade);
             p.setPen(QPen(accent, 2));
             p.drawRoundedRect(r, 9, 9);
             p.setPen(palette().color(QPalette::Text));
-            p.drawText(r, Qt::AlignCenter, target.second == 4 ? "Regrouper en onglet" : "Déplacer ici");
+            p.drawText(r, Qt::AlignCenter, target.second>=5?QStringList{"Gauche","Droite","Haut","Bas"}[target.second-5]:(target.second == 4 ? "Regrouper en onglet" : "Déplacer ici"));
         }
     }
     p.setPen(muted);
-    p.drawText(QRectF(18, height() - 33, width() - 36, 24), Qt::AlignLeft,
-               selected ? selected->windowTitle() + "  ·  " + QString::number(selected->width()) + " × " +
-                              QString::number(selected->height()) + " px"
-                        : "Les panneaux masqués peuvent être glissés depuis la liste.");
+    const auto caption=selected ? selected->windowTitle()+" · "+QString::number(selected->width())+" × "+QString::number(selected->height())+" px" : QString("Glissez un panneau depuis la liste");
+    p.drawText(QRectF(18,height()-fontMetrics().height()-8,width()-36,fontMetrics().height()+4),Qt::AlignLeft,p.fontMetrics().elidedText(caption,Qt::ElideRight,width()-36));
 }
 void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
@@ -184,6 +183,12 @@ void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
     setCursor(Qt::OpenHandCursor);
 }
 QPair<QDockWidget *, int> LayoutCanvas::targetAt(const QPointF &point) const {
+    const auto outer=frame();
+    if(outer.contains(point)){
+        int edge=-1;const qreal margin=18;
+        if(point.x()-outer.left()<margin)edge=5;else if(outer.right()-point.x()<margin)edge=6;else if(point.y()-outer.top()<margin)edge=7;else if(outer.bottom()-point.y()<margin)edge=8;
+        if(edge>=5){for(const auto &entry:visibleRects())if(entry.first!=dragged)return {entry.first,edge};if(dragged)return {dragged,edge};}
+    }
     for (const auto &entry : visibleRects())
         if (entry.first != dragged && entry.second.contains(point)) {
             const auto r = entry.second;
@@ -215,6 +220,7 @@ void LayoutCanvas::place(const QPointF &point) {
     emit interactionStarted();
     auto *dock = dragged;
     auto *reference = target.first;
+    if(target.second>=5){const Qt::DockWidgetArea areas[]={Qt::LeftDockWidgetArea,Qt::RightDockWidgetArea,Qt::TopDockWidgetArea,Qt::BottomDockWidgetArea};dock->setFloating(false);window->addDockWidget(areas[target.second-5],dock);dock->show();dock->raise();selected=dock;emit selectedChanged(dock);emit layoutChanged();return;}
     auto siblings = window->tabifiedDockWidgets(reference);
     dock->setFloating(false);
     window->addDockWidget(window->dockWidgetArea(reference), dock);

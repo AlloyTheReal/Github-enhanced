@@ -1,6 +1,6 @@
 # GitHub Enhanced
 
-Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.0 — aperçu fonctionnel**. Non affilié à GitHub.
+Client Git desktop indépendant en **C++20 / Qt 6**, avec interface française. Version **0.2.1 — aperçu fonctionnel**. Non affilié à GitHub.
 
 ![Interface GitHub Enhanced](docs/preview.png)
 
@@ -85,7 +85,7 @@ cpack --config build/release/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B dist
 bash packaging/linux/appimage.sh
 # Archive source pour Arch ou compilation locale
 cpack --config build/release/CPackSourceConfig.cmake -B dist
-cp dist/github-enhanced-0.2.0.tar.gz packaging/arch/
+cp dist/github-enhanced-0.2.1.tar.gz packaging/arch/
 cd packaging/arch
 makepkg -si
 ```
