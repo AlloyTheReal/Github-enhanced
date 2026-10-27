@@ -97,3 +97,12 @@ Les trois suites CTest passent : tests du cœur, 27 cas UI et 53 cas d’intégr
 Les nouveaux scénarios vérifient le focus, la sélection et le brouillon lors des changements externes, l’absence de commandes de rafraîchissement global lorsque le dépôt est inchangé, l’absence de fenêtre de progression lors de la surveillance et la conservation des modifications saisies pendant un commit. Les tests de disposition couvrent le placement direct, les onglets, le détachement, l’ancrage sur les bords extérieurs, l’annulation, la saisie des dimensions sans écrasement et la recherche de commandes. Les hauteurs de ligne et l’absence de chevauchement sont contrôlées à 11, 16 et 22 points.
 
 Les captures de l’éditeur ont été renouvelées. L’AppImage 0.2.1 est générée et son démarrage est vérifié en mode extraction/offscreen avec un profil isolé ; les archives Linux et source 0.2.1 sont générées. La version embarquée affiche 0.2.1.
+
+
+## Version 0.2.8 — sélection des fichiers et interface
+
+Compilation locale réussie et trois suites CTest validées après les modifications de l’interface. La suite UI compte 30 cas réussis et deux cas LFS ignorés, Git LFS n’étant pas installé dans cet environnement. Les cas d’intégration nécessitant Git LFS sont également ignorés ; les validations LFS des versions précédentes ne constituent pas une nouvelle validation de cette version.
+
+Les nouveaux tests vérifient l’exclusion effective d’un fichier du premier commit, sa conservation sur disque et l’état décoché après actualisation. Un test d’index couvre les noms contenant des crochets et plusieurs préparations successives. Les tests de diff contrôlent l’absence des en-têtes Git et le masquage des outils sans fichier.
+
+Captures Qt contrôlées : historique, modifications avec cases, diff unifié/côte à côte, Apparence et éditeur de barre d’outils, y compris à 22 points. Les builds et paquets Windows/macOS sont confiés au workflow de release.

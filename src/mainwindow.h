@@ -39,6 +39,7 @@ public:
     void openRepository(const QString &path);
     void checkUpdates(bool manual=true);
 protected:
+    void resizeEvent(QResizeEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 private:
     friend class LayoutDialog;
@@ -68,6 +69,8 @@ private:
     QPushButton *verifyRemote;
     QByteArray historySnapshot;
     OperationDialog *operation;
+    QPushButton *activityButton=nullptr;
+    QSet<QString> excludedFiles;
     bool refreshing = false;
     bool localStatusKnown = false;
     QString indexError;

@@ -87,6 +87,7 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), repositoryProbe(this)
     connect(updater,&AppUpdater::checked,this,[this](const AppUpdate &update,const QString &,bool manual){if(!manual&&update.available()){if(!updateDialog){updateDialog=new UpdateDialog(updater,this);connect(updateDialog,&UpdateDialog::installRequested,this,&MainWindow::installUpdate);}updateDialog->show();updateDialog->raise();}});
     setWindowIcon(QIcon(":/packaging/icons/github-enhanced.png"));
     setWindowTitle("GitHub Enhanced"); resize(1200, 780); setMinimumSize(860, 580);
+    setContentsMargins(12,0,12,12);
     setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks);
     const bool migrated = settings.value("interfaceRevision", 0).toInt() >= 3;
     activeTheme = Theme::read(":/themes/obsidian.json");
@@ -120,7 +121,13 @@ MainWindow::MainWindow() : runner(this), diffRunner(this), repositoryProbe(this)
     connect(&syncMonitor,&RepositorySync::updated,this,&MainWindow::updateSyncStatus);
     connect(&syncMonitor,&RepositorySync::busyChanged,this,[this](bool busy){verifyRemote->setEnabled(!busy&&!repository.isEmpty());verifyRemote->setText(busy?"Vérification…":"Vérifier le distant");if(syncToolbarAction){syncToolbarAction->setEnabled(!busy&&!repository.isEmpty()&&!runner.busy());if(busy)syncToolbarAction->setText("Fetch en cours…");else updateSyncStatus(syncState);}updateActions();});
     connect(&remoteTimer,&QTimer::timeout,this,[this]{if(!layoutEditorOpen()&&!property("installingUpdate").toBool()&&!QApplication::activeModalWidget()&&!repository.isEmpty()&&!pushCheck.busy()&&!runner.busy()&&!indexer.busy()&&!syncMonitor.busy())syncMonitor.inspect(repository,true);});remoteTimer.start(60000);
-    auto *activityButton=new QPushButton("Activité");activityButton->setObjectName("operationActivity");statusBar()->addPermanentWidget(activityButton);connect(activityButton,&QPushButton::clicked,operation,[this]{operation->show();operation->raise();});
+    activityButton=new QPushButton("Activité",this);activityButton->setObjectName("operationActivity");activityButton->hide();
+    connect(operation,&OperationDialog::stateChanged,this,[this](const QString &state){
+        activityButton->setText(state=="running"?"Activité en cours…":"Activité en échec");
+        activityButton->setStyleSheet(QString("QPushButton { background: %1; color: white; border: 0; border-radius: 16px; padding: 10px 18px; }").arg(state=="running"?"#0969da":"#cf222e"));
+        activityButton->adjustSize();activityButton->move(width()-activityButton->width()-20,height()-activityButton->height()-20);
+        activityButton->setVisible(state!="idle");activityButton->raise();
+    });connect(activityButton,&QPushButton::clicked,operation,[this]{operation->show();operation->raise();});
     if (settings.value("interfaceRevision", 0).toInt() >= 2) {
         if (settings.contains("geometry")) restoreGeometry(settings.value("geometry").toByteArray());
         auto configuration = QJsonDocument::fromJson(settings.value("workspace").toByteArray()).object();
@@ -150,7 +157,7 @@ void MainWindow::buildInterface() {
     mainToolbar->setIconSize(QSize(16, 16));
     auto identify = [this](QAction *action, const QString &id, const QString &title) {
         action->setObjectName(id); action->setProperty("customTitle", title);
-        action->setProperty("defaultVisible", id != "tool-refresh"); toolbarItems.append(action);
+        action->setProperty("defaultVisible", id != "tool-refresh" && id != "tool-layout"); toolbarItems.append(action);
         if (!qobject_cast<QWidgetAction *>(action)) action->setIcon(commandIcon(id.mid(5)));
     };
     openAction = new QAction("Ouvrir un dépôt…", this);
@@ -255,7 +262,7 @@ void MainWindow::buildInterface() {
     diffDock->setMinimumWidth(300);
 
     history = new QTreeWidget; history->setObjectName("commitHistory"); history->setHeaderLabels({"Historique"});
-    history->setItemDelegate(new TwoLineDelegate(history));history->setRootIsDecorated(false); history->setHeaderHidden(true);
+    history->setRootIsDecorated(false); history->setHeaderHidden(true);
     history->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     historyDock = dock(this, "Historique", "history", history, Qt::LeftDockWidgetArea);
     connect(history, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) {showCommit(item->data(0,Qt::UserRole).toString());});
@@ -264,10 +271,16 @@ void MainWindow::buildInterface() {
     auto *changesLayout = new QVBoxLayout(changesWidget); changesLayout->setContentsMargins(0, 0, 0, 0); changesLayout->setSpacing(0);
     changeCount = label("Aucun dépôt sélectionné", "changeCount"); changeCount->setMargin(12);changeCount->setToolTip("Les fichiers exclus par .gitignore restent sur le disque et ne font pas partie des commits."); changesLayout->addWidget(changeCount);
     files = new QTreeWidget; files->setObjectName("changedFiles"); files->setHeaderLabels({"État", "Fichier"});
-    files->setRootIsDecorated(false); files->setHeaderHidden(true); files->setColumnWidth(0, 38);
+    files->setRootIsDecorated(false); files->setHeaderHidden(true); files->setColumnWidth(0, 32); files->header()->setSectionResizeMode(0,QHeaderView::Fixed);
     files->setSelectionMode(QAbstractItemView::ExtendedSelection);
     files->header()->setSectionResizeMode(1, QHeaderView::Stretch); files->setAccessibleName("Fichiers modifiés"); changesLayout->addWidget(files);
     connect(files, &QTreeWidget::itemSelectionChanged, this, [this]{selectedCommit.clear();commitBrowser->hide();diffDock->raise();showDiff();});
+    connect(files,&QTreeWidget::itemChanged,this,[this](QTreeWidgetItem *item,int column){
+        if(column!=0)return;
+        const auto path=item->data(1,Qt::UserRole).toString();
+        if(item->checkState(0)==Qt::Checked)excludedFiles.remove(path);else excludedFiles.insert(path);
+        indexer.setExcludedFiles(excludedFiles);updateActions();
+    });
     changesDock = dock(this, "Modifications", "changes", changesWidget, Qt::LeftDockWidgetArea); changesDock->setMinimumWidth(250);
 
     auto *commitWidget = new QWidget; commitWidget->setObjectName("sidebar"); auto *commitLayout = new QVBoxLayout(commitWidget);
@@ -279,12 +292,12 @@ void MainWindow::buildInterface() {
     generateButton=button("Générer avec Codex",commitLayout,[this]{generateMessage();},this);generateButton->setObjectName("generateCommitMessage");generateButton->setToolTip("Envoie un résumé des modifications à votre session Codex pour proposer un message. Aucun commit n’est créé automatiquement.");
     generationStatus=new DiagnosticLabel;generationStatus->setWordWrap(true);generationStatus->setObjectName("generationStatus");commitLayout->addWidget(generationStatus);
     commitButton = button("Créer le commit", commitLayout, [this] { commit(); }, this, true); commitButton->setObjectName("primary");
-    commitButton->setToolTip("Créer un commit avec tous les fichiers modifiés");
+    commitButton->setToolTip("Créer un commit avec les fichiers cochés");
     commitDock = dock(this, "Commit", "commit", commitWidget, Qt::LeftDockWidgetArea);
     activity = new QPlainTextEdit; activity->setReadOnly(true); activity->setFrameShape(QFrame::NoFrame);
     activity->setMaximumBlockCount(1500); activity->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     activityDock = dock(this, "Journal", "activity", activity, Qt::BottomDockWidgetArea);
-    statusBar()->setSizeGripEnabled(false); statusBar()->showMessage("Choisissez un dépôt");
+    statusBar()->hide(); statusBar()->setSizeGripEnabled(false); statusBar()->showMessage("Choisissez un dépôt");
     resetLayout();
 }
 
@@ -301,10 +314,17 @@ void MainWindow::buildMenus() {
     auto *quick=new QWidget(menuBar());quick->setStyleSheet("QToolButton { padding: 2px 8px; min-height: 20px; }");auto *quickRow=new QHBoxLayout(quick);quickRow->setContentsMargins(0,0,6,0);quickRow->setSpacing(4);
     auto *restoreToolbar=new MenuTextButton(quick);restoreToolbar->setObjectName("restoreToolbarButton");restoreToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);restoreToolbar->setText("Afficher la barre d’outils");restoreToolbar->setAutoRaise(true);restoreToolbar->setToolTip("Réafficher les commandes du dépôt");restoreToolbar->setAccessibleName(restoreToolbar->text());quickRow->addWidget(restoreToolbar);
     connect(restoreToolbar,&QToolButton::clicked,this,[this]{bool any=false;for(auto *action:toolbarItems)any|=action->isVisible();if(!any)for(auto *action:toolbarItems)action->setVisible(action->property("defaultVisible").toBool());mainToolbar->show();mainToolbar->raise();saveLayoutSettings();});
-    connect(mainToolbar,&QToolBar::visibilityChanged,restoreToolbar,[restoreToolbar](bool visible){restoreToolbar->setVisible(!visible);});restoreToolbar->setVisible(mainToolbar->isHidden());QTimer::singleShot(0,this,[this,restoreToolbar]{restoreToolbar->setVisible(mainToolbar->isHidden());if(menuBar()->isNativeMenuBar()&&mainToolbar->isHidden())statusBar()->show();});
-    auto *colorsButton=new MenuTextButton(quick);colorsButton->setObjectName("settingsButton");colorsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);colorsButton->setText("Paramètres…");colorsButton->setAutoRaise(true);colorsButton->setToolTip("Ouvrir les paramètres de l’application");colorsButton->setAccessibleName("Paramètres de l’application");quickRow->addWidget(colorsButton);connect(colorsButton,&QToolButton::clicked,preferences,&QAction::trigger);if(menuBar()->isNativeMenuBar()){quick->setParent(statusBar());statusBar()->addPermanentWidget(quick);connect(mainToolbar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible)statusBar()->show();});}else menuBar()->setCornerWidget(quick,Qt::TopRightCorner);
-    auto fitQuick=[this,quick,quickRow,restoreToolbar,colorsButton]{restoreToolbar->updateGeometry();colorsButton->updateGeometry();quickRow->invalidate();quick->adjustSize();quick->updateGeometry();if(!menuBar()->isNativeMenuBar())menuBar()->setCornerWidget(quick,Qt::TopRightCorner);};
-    connect(mainToolbar,&QToolBar::visibilityChanged,quick,[quick,fitQuick](bool){QTimer::singleShot(0,quick,fitQuick);});QTimer::singleShot(0,quick,fitQuick);
+    connect(mainToolbar,&QToolBar::visibilityChanged,restoreToolbar,[restoreToolbar](bool visible){restoreToolbar->setVisible(!visible);});restoreToolbar->setVisible(mainToolbar->isHidden());QTimer::singleShot(0,this,[this,restoreToolbar]{restoreToolbar->setVisible(mainToolbar->isHidden());});
+    if (!menuBar()->isNativeMenuBar()) menuBar()->setCornerWidget(quick,Qt::TopRightCorner);
+    else quick->hide();
+    for (auto *surface : QList<QWidget *>{menuBar(), mainToolbar}) {
+        surface->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(surface,&QWidget::customContextMenuRequested,this,[this,surface,preferences](const QPoint &point){
+            QMenu menu(this);menu.addAction(preferences);menu.addAction("Personnaliser l’interface…",this,&MainWindow::editLayout);
+            menu.addAction(mainToolbar->toggleViewAction());menu.exec(surface->mapToGlobal(point));
+        });
+    }
+
 
 
     fileMenu->addSeparator(); auto *quit = fileMenu->addAction("Quitter", QKeySequence::Quit, this, &QWidget::close); quit->setMenuRole(QAction::QuitRole);
@@ -421,7 +441,7 @@ void MainWindow::openRepository(const QString &path) {
         if (!r.ok()) { Diagnostics::showError(this, "Dépôt inaccessible", r.message()); return; }
         auto root = r.output;
         if (root.endsWith('\n')) root.chop(1);
-        repository = QString::fromUtf8(root);repositorySnapshot.clear();historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
+        excludedFiles.clear();indexer.setExcludedFiles({});repository = QString::fromUtf8(root);repositorySnapshot.clear();historySnapshot.clear();syncState={};syncStatus->setText("Vérification de la branche et du dépôt distant…");syncAction->hide();syncMonitor.inspect(repository,true); ++diffRevision;selectedCommit.clear();commitBrowser->hide();indexError.clear();
         branch.clear();changes.clear();localStatusKnown=false; files->clear(); history->clear(); diffViewer->setContent({},false);
         summary->clear(); description->clear();
         recent.removeAll(repository); recent.prepend(repository); while (recent.size() > 20) recent.removeLast();
@@ -465,11 +485,11 @@ void MainWindow::refreshViews() {
         const auto nextChanges=parseStatus(r.output);
         if(nextChanges!=changes){
             const auto scroll=files->verticalScrollBar()->value();const QSignalBlocker block(files);files->clear();changes=nextChanges;
-            for(const auto &c:changes){auto *item=new QTreeWidgetItem(files,{c.status,c.path});item->setData(1,Qt::UserRole,c.path);item->setToolTip(0,"M : modifié · A : ajouté · D : supprimé · R : renommé · U : conflit");if(c.path==selected)files->setCurrentItem(item);}
+            for(const auto &c:changes){auto *item=new QTreeWidgetItem(files,{QString(),c.path});item->setData(1,Qt::UserRole,c.path);item->setCheckState(0,excludedFiles.contains(c.path)?Qt::Unchecked:Qt::Checked);item->setToolTip(1,c.path);if(c.path==selected)files->setCurrentItem(item);}
             if(!files->currentItem()&&files->topLevelItemCount())files->setCurrentItem(files->topLevelItem(0));
             files->verticalScrollBar()->setValue(scroll);
         }
-        changeCount->setText(indexError.isEmpty()?QString("%1 fichier(s) prêt(s) pour le commit").arg(changes.size()):"Préparation interrompue · voir le journal");
+        changeCount->setText(indexError.isEmpty()?QString("%1 fichier(s) modifié(s)").arg(changes.size()):"Préparation interrompue · voir le journal");
         updateSyncStatus(syncState);
         if(selectedCommit.isEmpty())showDiff();
     });
@@ -492,9 +512,10 @@ void MainWindow::refreshViews() {
         if (!r.ok()) return; // An unborn repository has no history yet.
         const auto parts = r.output.split('\0');
         for (qsizetype i = 0; i + 4 < parts.size(); i += 5) {
-            auto *item = new QTreeWidgetItem(history, {QString::fromUtf8(parts[i+4]) + "\n" + QString::fromUtf8(parts[i+1]) + " · " + QString::fromUtf8(parts[i+2]) + " · " + QString::fromUtf8(parts[i+3])});
+            auto *item = new QTreeWidgetItem(history, {QString::fromUtf8(parts[i+4]).trimmed()});
             item->setData(0, Qt::UserRole, QString::fromUtf8(parts[i]).trimmed());
-            item->setSizeHint(0,QSize(0,history->fontMetrics().lineSpacing()*2+20));
+            item->setToolTip(0,QString::fromUtf8(parts[i+2])+" · "+QString::fromUtf8(parts[i+3])+" · "+QString::fromUtf8(parts[i+1]));
+            item->setSizeHint(0,QSize(0,history->fontMetrics().lineSpacing()+24));
             if(item->data(0,Qt::UserRole).toString()==oldSelection)history->setCurrentItem(item);
         }
         history->verticalScrollBar()->setValue(oldScroll);
@@ -506,7 +527,8 @@ void MainWindow::updateActions() {
     for (auto *a : repoActions) a->setEnabled(enabled&&(!QStringList{"Push","Pull","Fetch"}.contains(a->text())||!syncMonitor.busy()));
     const bool canEdit=!property("installingUpdate").toBool()&&!repository.isEmpty();
     branches->setEnabled(enabled);commitDock->widget()->setEnabled(canEdit);changesDock->widget()->setEnabled(canEdit);
-    commitButton->setEnabled(enabled);generateButton->setEnabled(enabled||codex.generating());
+    const bool included=std::any_of(changes.cbegin(),changes.cend(),[this](const FileChange &c){return !excludedFiles.contains(c.path);});
+    commitButton->setEnabled(enabled&&included);generateButton->setEnabled((enabled&&included)||codex.generating());
     repositories->setEnabled(!runner.busy());
     syncAction->setEnabled(enabled&&!syncMonitor.busy());
     if(syncToolbarAction)syncToolbarAction->setEnabled(enabled&&!syncMonitor.busy()&&!QStringList{"unborn","detached"}.contains(syncState.kind));
@@ -652,6 +674,7 @@ void MainWindow::authorizeWorkflowPermission(const QString &path,const QStringLi
 
 void MainWindow::commit() {
     if (repository.isEmpty() || runner.busy()) return;
+    if(std::none_of(changes.cbegin(),changes.cend(),[this](const FileChange &c){return !excludedFiles.contains(c.path);}))return;
     const auto originalSummary=summary->text();auto message = originalSummary.trimmed();
     if (message.isEmpty()) { summary->setFocus(); statusBar()->showMessage("Saisissez un résumé du commit.", 5000); return; }
     const auto body=description->toPlainText();beginOperation("Création du commit");
@@ -681,7 +704,7 @@ void MainWindow::showDiff() {
         return;
     }
     QStringList args{"--no-pager", "diff", "--no-ext-diff", "--no-textconv", "--no-color"};
-    args << "--cached";
+    if(change.staged())args << "--cached";
     args << "--" << file; if (!change.originalPath.isEmpty()) args << change.originalPath;
     diffRunner.run("git", args, path, [this, revision, path](const CommandResult &r) {
         if (path != repository || revision != diffRevision) return;
@@ -699,8 +722,8 @@ void MainWindow::showCommit(const QString &sha) {
         const auto parts=r.output.split('\0');if(parts.size()<4)return;
         commitSubject->setText(QString::fromUtf8(parts[0]));
         const auto date=QDateTime::fromString(QString::fromUtf8(parts[2]),Qt::ISODate).toLocalTime();
-        commitMeta->setText(QString::fromUtf8(parts[1])+"\n"+QLocale(QLocale::French).toString(date,"d MMM yyyy · HH:mm")+"\n"+sha.left(12));
-        commitInfo->setText(QString::fromUtf8(parts[3]).trimmed());
+        commitMeta->setText(QString::fromUtf8(parts[1])+" · "+QLocale(QLocale::French).toString(date,"d MMM yyyy")+"\n"+sha.left(8));
+        commitInfo->setText(QString::fromUtf8(parts[3]).trimmed());commitInfo->setVisible(!commitInfo->text().isEmpty());
     });
     diffRunner.run("git",{"diff-tree","--root","--no-commit-id","--name-status","-z","-r","--no-renames","--first-parent","-m",sha,"--"},path,[this,path,sha,revision](const CommandResult &r){
         if(path!=repository||sha!=selectedCommit||revision!=diffRevision)return;
@@ -733,15 +756,14 @@ void MainWindow::showCommitFile(){
 void MainWindow::showText(const QString &text) {
     // Limit UI rendering separately from process output so very large diffs remain responsive.
     const auto limited=text.left(1024*1024);const auto rendered=limited+(text.size()>limited.size()?"\n[… aperçu limité à 1 million de caractères]":"");
-    const bool same=diff->toPlainText()==rendered;
-    if(same&&!diff->property("refreshHighlight").toBool())return;
-    diff->setProperty("refreshHighlight",false);
-    if(!same){const int vertical=diff->verticalScrollBar()->value(),horizontal=diff->horizontalScrollBar()->value();diff->setPlainText(rendered);diff->verticalScrollBar()->setValue(vertical);diff->horizontalScrollBar()->setValue(horizontal);}
+    const int vertical=diff->verticalScrollBar()->value(),horizontal=diff->horizontalScrollBar()->value();
     for(auto *editor:diffViewer->findChildren<QPlainTextEdit *>()){
         editor->setProperty("addedColor",native?QString():activeTheme["added"].toString());
         editor->setProperty("removedColor",native?QString():activeTheme["removed"].toString());
     }
     diffViewer->setContent(rendered,rendered.contains(QRegularExpression("(?m)^@@ -")));
+    diffViewer->setFileOpen(selectedCommit.isEmpty()?files->currentItem()!=nullptr:commitFiles->currentItem()!=nullptr);
+    diff->verticalScrollBar()->setValue(vertical);diff->horizontalScrollBar()->setValue(horizontal);
 
 }
 
@@ -918,7 +940,7 @@ void MainWindow::resetLayout(const QString &preset) {
     }
     addToolBar(Qt::TopToolBarArea, mainToolbar); mainToolbar->show();
     for (auto *a : toolbarItems) { mainToolbar->removeAction(a); mainToolbar->addAction(a); a->setVisible(a->property("defaultVisible").toBool()); }
-    mainToolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); statusBar()->show();
+    mainToolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); statusBar()->hide();
     resizeDocks({changesDock, diffDock}, {300, 900}, Qt::Horizontal);
     resizeDocks({changesDock, commitDock}, {440, 200}, Qt::Vertical);
     setLayoutEditing(layoutEditing);
@@ -958,7 +980,7 @@ bool MainWindow::applyLayoutConfiguration(const QJsonObject &p) {
     if (p["toolbar"].isArray()) applyToolbarConfiguration(p["toolbar"].toArray());
     const int style = p["toolbarStyle"].toInt(int(Qt::ToolButtonTextBesideIcon));
     if (style >= Qt::ToolButtonIconOnly && style <= Qt::ToolButtonFollowStyle) mainToolbar->setToolButtonStyle(Qt::ToolButtonStyle(style));
-    statusBar()->setVisible(p["statusBar"].toBool(true));
+    statusBar()->hide();
     setLayoutEditing(!p["locked"].toBool(true)); return true;
 }
 
@@ -1080,3 +1102,8 @@ void MainWindow::probeRepository(){
 }
 
 bool MainWindow::layoutEditorOpen()const{for(auto *editor:findChildren<LayoutDialog *>())if(editor->isVisible())return true;return false;}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
+    if(activityButton){activityButton->move(width()-activityButton->width()-20,height()-activityButton->height()-20);activityButton->raise();}
+}

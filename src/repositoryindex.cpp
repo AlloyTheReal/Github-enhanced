@@ -21,9 +21,11 @@ void RepositoryIndex::prepare(const QString &repository,
   }
   active = true;
   path = repository;
+  preparingExcluded=excludedFiles;
   done = std::move(callback);
   largeFiles.clear();
   stagedCandidates.clear();
+  includedPaths.clear();
   needsAdd = false;
   runner->run("git",
               {"status", "--porcelain=v1", "-z", "--untracked-files=all"}, path,
@@ -38,6 +40,9 @@ void RepositoryIndex::prepare(const QString &repository,
                   return;
                 }
                 for (const auto &change : changes) {
+                  if(preparingExcluded.contains(change.path)){if(!change.originalPath.isEmpty())preparingExcluded.insert(change.originalPath);continue;}
+                  includedPaths.append(change.path);
+                  if(!change.originalPath.isEmpty())includedPaths.append(change.originalPath);
                   if (change.status.contains('U') || change.status == "AA" ||
                       change.status == "DD") {
                     finish("Conflit à résoudre : " + change.path +
@@ -78,6 +83,7 @@ void RepositoryIndex::inspectStaged() {
 }
 void RepositoryIndex::afterInspection() {
   if (!largeFiles.isEmpty()) {
+    if(preparingExcluded.contains(".gitattributes")){finish("Cochez .gitattributes pour inclure la configuration Git LFS des gros fichiers sélectionnés.");return;}
     emit detail("Préparation Git LFS pour " +
                 QString::number(largeFiles.size()) + " gros fichier(s)…");
     if (ToolRuntime::executable("git-lfs").isEmpty())
@@ -87,7 +93,7 @@ void RepositoryIndex::afterInspection() {
   } else if (needsAdd)
     stageAll();
   else
-    finish();
+    unstageExcluded();
 }
 
 void RepositoryIndex::configureLfs() {
@@ -96,6 +102,7 @@ void RepositoryIndex::configureLfs() {
            "un fichier local.");
     return;
   }
+  if(!includedPaths.contains(".gitattributes"))includedPaths.append(".gitattributes");
   runner->run(ToolRuntime::executable("git-lfs"), {"install", "--local"}, path,
               [this](const CommandResult &r) {
                 if (!r.ok())
@@ -122,10 +129,20 @@ void RepositoryIndex::trackNext() {
 }
 void RepositoryIndex::stageAll() {
   emit detail("Préparation automatique des fichiers modifiés…");
-  runner->run("git", {"add", "--all", "--", "."}, path,
+  QByteArray paths;
+  for(const auto &file:includedPaths){paths+=file.toUtf8();paths+='\0';}
+  if(paths.isEmpty()){unstageExcluded();return;}
+  runner->run("git", {"add","--all","--pathspec-from-file=-","--pathspec-file-nul"}, path,
               [this](const CommandResult &r) {
-                finish(r.ok() ? QString() : r.message());
-              });
+                if(r.ok())unstageExcluded();else finish(r.message());
+              },paths);
+}
+void RepositoryIndex::unstageExcluded() {
+  if(preparingExcluded.isEmpty()){finish();return;}
+  QByteArray paths;
+  for(const auto &file:preparingExcluded){paths+=file.toUtf8();paths+='\0';}
+  runner->run("git",{"reset","--quiet","--pathspec-from-file=-","--pathspec-file-nul"},path,
+              [this](const CommandResult &r){finish(r.ok()?QString():r.message());},paths);
 }
 void RepositoryIndex::finish(const QString &error) {
   active = false;

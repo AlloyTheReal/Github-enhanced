@@ -285,6 +285,15 @@ class IntegrationTests : public QObject {
         QCOMPARE(git({"switch","main"}).first,0);QVERIFY(write("file.txt","main\n"));QCOMPARE(git({"commit","-am","main"}).first,0);QVERIFY(git({"merge","feature"}).first!=0);
         auto conflict=git({"ls-files","-u"}).second;QVERIFY(!conflict.isEmpty());prepare();QTRY_VERIFY(done);QTRY_VERIFY(!commands.busy());QVERIFY(error.contains("Conflit"));QCOMPARE(git({"ls-files","-u"}).second,conflict);
     }
+    void indexSelectionSurvivesRefresh(){
+        QTemporaryDir repository;auto git=[&](QStringList args){QProcess p;p.setWorkingDirectory(repository.path());p.start("git",args);p.waitForFinished(5000);return qMakePair(p.exitCode(),p.readAllStandardOutput());};
+        QCOMPARE(git({"init","--initial-branch=main"}).first,0);
+        for(const auto *name:{"keep.txt","omit[1].txt","omit1.txt"}){QFile file(repository.filePath(name));QVERIFY(file.open(QIODevice::WriteOnly));file.write("content\n");}
+        QCOMPARE(git({"add","--all"}).first,0);
+        CommandRunner commands;RepositoryIndex index(&commands);index.setExcludedFiles({"omit[1].txt"});
+        for(int i=0;i<2;++i){bool done=false;QString error;index.prepare(repository.path(),[&](QString e){error=e;done=true;});QTRY_VERIFY(done);QTRY_VERIFY(!commands.busy());QVERIFY2(error.isEmpty(),qPrintable(error));
+            const auto names=git({"diff","--cached","--name-only"}).second;QVERIFY(names.contains("keep.txt"));QVERIFY(names.contains("omit1.txt"));QVERIFY(!names.contains("omit[1].txt"));QVERIFY(QFileInfo::exists(repository.filePath("omit[1].txt")));}
+    }
     void realLfsAndAutomaticIndex(){
         auto lfs=qEnvironmentVariable("GHE_TEST_LFS");if(lfs.isEmpty())lfs=QStandardPaths::findExecutable("git-lfs");if(lfs.isEmpty())QSKIP("Git LFS indisponible sur cette machine");
         QTemporaryDir repository,configuration;QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,configuration.path());ToolRuntime::setExecutable("git-lfs",lfs);

@@ -98,7 +98,7 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QToolButton#repositorySelector { font-weight: 500; }
         QDockWidget { color: @text; border: 0; }
         QDockWidget::title { background: @background; padding: 8px 12px; font-weight: 500; }
-        QWidget#sidebar { background: @background; }
+        QWidget#sidebar { background: @surface; border-radius: 14px; }
         QWidget#welcome, QWidget#diffPage { background: @surface; }
         QWidget#sectionHeader { background: @background; border-bottom: 1px solid @hairline; }
         QLabel#caption { font-size: 11px; color: @muted; }
@@ -110,7 +110,7 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QLabel#rowSubtitle { font-size: 12px; }
         QLabel#changeCount { border-bottom: 1px solid @hairline; }
         QLabel { background: transparent; }
-        QListWidget, QTreeWidget { background: @surface; color: @text; border: 0; outline: 0; padding: 0; }
+        QListWidget, QTreeWidget { background: @surface; color: @text; border: 0; outline: 0; padding: 8px; border-radius: 14px; }
         QListWidget::item, QTreeWidget::item { padding: 8px 10px; border: 0; border-radius: 7px; margin: 1px 3px; }
         QListWidget#layoutPanels::item { padding: 4px 8px; }
         QListWidget#recentRepositories::item:selected { background: @navSelection; color: @text; }
@@ -158,6 +158,10 @@ void Theme::apply(const QJsonObject &o, bool native, int fontSize) {
         QToolButton#removeRecent:hover, QToolButton#removeRecentMenu:hover { background: @card; }
         QWidget#commitBrowser { background: @background; }
         QTreeWidget#commitFiles { background: transparent; }
+        QTreeWidget#changedFiles { padding: 4px 8px; }
+        QTreeWidget#changedFiles::item { padding: 8px 0; margin: 0; border-radius: 0; }
+        QTreeWidget#commitHistory { padding: 4px 0; }
+        QTreeWidget#commitHistory::item { padding: 10px 12px; margin: 2px 0; }
         QFrame#settingsSidebar { background: @sidebar; border-top-left-radius: 24px; border-bottom-left-radius: 24px; }
         QFrame#settingsContent { background: @content; border-radius: 22px; }
         QFrame#settingsCard { background: @card; border: 0; border-radius: 14px; }

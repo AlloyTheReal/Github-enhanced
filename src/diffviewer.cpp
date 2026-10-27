@@ -31,10 +31,12 @@ void DiffEditor::setLines(const QString &text,const QStringList &labels,const QL
             QTextEdit::ExtraSelection selection;selection.cursor=QTextCursor(block);
             const bool dark=palette().color(QPalette::Base).lightness()<128;
             auto added=QColor(property("addedColor").toString()),removed=QColor(property("removedColor").toString());
-            if(!added.isValid())added=QColor(dark?"#66c58a":"#1a7f37");
-            if(!removed.isValid())removed=QColor(dark?"#f08080":"#cf222e");
+            if(!added.isValid())added=QColor(dark?"#238636":"#1a7f37");
+            if(!removed.isValid())removed=QColor(dark?"#da3633":"#cf222e");
+            added.setHsv(added.hsvHue(),qMax(180,added.hsvSaturation()),added.value());
+            removed.setHsv(removed.hsvHue(),qMax(180,removed.hsvSaturation()),removed.value());
             auto color=kinds[i]==1?added:kinds[i]==-1?removed:palette().color(QPalette::Highlight);
-            color.setAlpha(dark?35:24);
+            color.setAlpha(dark?105:64);
             selection.format.setBackground(color);selection.format.setProperty(QTextFormat::FullWidthSelection,true);
             selections.append(selection);
         }
@@ -56,17 +58,17 @@ void DiffEditor::paintGutter(QPaintEvent *event){
 }
 DiffViewer::DiffViewer(QWidget *parent):QWidget(parent){
     setObjectName("diffViewer");auto *root=new QVBoxLayout(this);root->setContentsMargins(0,0,0,0);root->setSpacing(0);
-    auto *toolbar=new QWidget;toolbar->setObjectName("diffTools");auto *row=new QHBoxLayout(toolbar);row->setContentsMargins(12,8,12,8);row->setSpacing(8);
-    statistics=new QLabel;statistics->setObjectName("diffStatistics");statistics->setWordWrap(true);statistics->setMargin(10);root->addWidget(statistics);
+    auto *toolbar=new QWidget;tools=toolbar;toolbar->setObjectName("diffTools");auto *row=new QHBoxLayout(toolbar);row->setContentsMargins(12,8,12,8);row->setSpacing(8);
+    statistics=new QLabel(this);statistics->setObjectName("diffStatistics");statistics->setWordWrap(true);statistics->setMargin(10);statistics->hide();
     mode=new QComboBox;mode->setObjectName("diffMode");mode->addItems({"Vue unifiée","Côte à côte"});mode->setAccessibleName("Présentation du diff");row->addWidget(mode,1);
     for(int direction:{-1,1}){
         auto *button=new QPushButton(direction<0?"Précédent":"Suivant");button->setToolTip("Bloc modifié "+QString(direction<0?"précédent":"suivant"));row->addWidget(button);
         connect(button,&QPushButton::clicked,this,[this,direction]{jump(direction);});
     }
     root->addWidget(toolbar);
-    auto *findRow=new QHBoxLayout;findRow->setContentsMargins(12,0,12,8);
+    findTools=new QWidget;auto *findRow=new QHBoxLayout(findTools);findRow->setContentsMargins(12,0,12,8);
     search=new QLineEdit;search->setObjectName("diffSearch");search->setPlaceholderText("Rechercher dans le fichier…");search->setAccessibleName("Rechercher dans le fichier");findRow->addWidget(search);
-    auto *find=new QPushButton("Rechercher");findRow->addWidget(find);root->addLayout(findRow);
+    auto *find=new QPushButton("Rechercher");findRow->addWidget(find);root->addWidget(findTools);
     views=new QStackedWidget;unified=new DiffEditor;unified->setObjectName("diffEditor");unified->setAccessibleName("Diff du fichier ou du commit");views->addWidget(unified);
     auto *split=new QSplitter;split->setObjectName("diffSideBySide");
     for(auto pair:{std::pair<DiffEditor **,QString>{&before,"Avant"},{&after,"Après"}}){
@@ -82,11 +84,12 @@ DiffViewer::DiffViewer(QWidget *parent):QWidget(parent){
         auto *target=mode->currentIndex()==0?unified:after;
         if(!target->find(search->text())){target->moveCursor(QTextCursor::Start);target->find(search->text());}
     };
+    tools->hide();findTools->hide();
     connect(find,&QPushButton::clicked,this,doFind);connect(search,&QLineEdit::returnPressed,this,doFind);
 }
 void DiffViewer::setContent(const QString &text,bool patch){
     content=text;isPatch=patch;hunks.clear();
-    const auto lines=text.split('\n');QStringList labels,oldLines,newLines,oldLabels,newLabels;
+    const auto lines=text.split('\n');QStringList displayLines,labels,oldLines,newLines,oldLabels,newLabels;
     QList<int> kinds,oldKinds,newKinds;int oldLine=0,newLine=0,added=0,removed=0;bool inHunk=false;
     QStringList deleted,inserted;QList<int> deletedNumbers,insertedNumbers;
     auto flush=[&]{
@@ -103,21 +106,22 @@ void DiffViewer::setContent(const QString &text,bool patch){
         const auto &line=lines[i];auto match=header.match(line);QString label;int kind=0;
         if(!patch){label=QString::number(i+1);oldLines<<line;newLines<<line;oldLabels<<label;newLabels<<label;oldKinds<<0;newKinds<<0;}
         else if(match.hasMatch()){
-            flush();oldLine=match.captured(1).toInt();newLine=match.captured(2).toInt();inHunk=true;kind=2;hunks<<i;
-            oldLines<<line;newLines<<line;oldLabels<<"";newLabels<<"";oldKinds<<2;newKinds<<2;
+            flush();oldLine=match.captured(1).toInt();newLine=match.captured(2).toInt();inHunk=true;hunks<<displayLines.size();continue;
         }else if(inHunk&&line.startsWith('-')){
-            label=QString::number(oldLine)+"      ";deleted<<line.mid(1);deletedNumbers<<oldLine++;kind=-1;++removed;
+            label=QString::number(oldLine)+"       −";deleted<<line.mid(1);deletedNumbers<<oldLine++;kind=-1;++removed;
         }else if(inHunk&&line.startsWith('+')){
-            label="      "+QString::number(newLine);inserted<<line.mid(1);insertedNumbers<<newLine++;kind=1;++added;
+            label="      "+QString::number(newLine)+"  +";inserted<<line.mid(1);insertedNumbers<<newLine++;kind=1;++added;
         }else if(inHunk&&line.startsWith(' ')){
             flush();label=QString::number(oldLine)+"  "+QString::number(newLine);
             oldLines<<line.mid(1);newLines<<line.mid(1);oldLabels<<QString::number(oldLine++);newLabels<<QString::number(newLine++);oldKinds<<0;newKinds<<0;
-        }else if(line.startsWith("diff --git ")){flush();inHunk=false;}
-        labels<<label;kinds<<kind;
+        }else if(line.startsWith("diff --git ")){flush();inHunk=false;continue;}
+        else if(patch)continue;
+        displayLines<<(patch?line.mid(1):line);labels<<label;kinds<<kind;
     }
     flush();
-    unified->setLines(text,labels,kinds);before->setLines(oldLines.join('\n'),oldLabels,oldKinds);after->setLines(newLines.join('\n'),newLabels,newKinds);
+    unified->setLines(displayLines.join('\n'),labels,kinds);before->setLines(oldLines.join('\n'),oldLabels,oldKinds);after->setLines(newLines.join('\n'),newLabels,newKinds);
     statistics->setText(patch?QString("+%1 ajout(s)  −%2 suppression(s) · %3 bloc(s)").arg(added).arg(removed).arg(hunks.size()):QString("%1 lignes").arg(lines.size()));
+    setFileOpen(!text.isEmpty());
     mode->setEnabled(patch&&!hunks.isEmpty());if(!mode->isEnabled())mode->setCurrentIndex(0);
 }
 void DiffViewer::refreshColors(){setContent(content,isPatch);}
@@ -128,3 +132,5 @@ void DiffViewer::jump(int direction){
     else {for(auto i=hunks.crbegin();i!=hunks.crend();++i)if(*i<current){target=*i;break;}}
     mode->setCurrentIndex(0);auto cursor=QTextCursor(unified->document()->findBlockByNumber(target));unified->setTextCursor(cursor);unified->centerCursor();
 }
+
+void DiffViewer::setFileOpen(bool open){tools->setVisible(open);findTools->setVisible(open);}

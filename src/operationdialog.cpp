@@ -77,6 +77,7 @@ void OperationDialog::begin(const QString &title) {
   recoveryButton->hide();
   ++completionRevision;
   active = true;
+  emit stateChanged("running");
   titleLabel->setText(title);
   details->clear();
   pending.clear();
@@ -117,6 +118,7 @@ void OperationDialog::finish(bool success, const QString &message) {
     return;
   const int revision = ++completionRevision;
   active = false;
+  emit stateChanged(success ? "idle" : "failed");
   reveal.stop();
   const auto tail = pending;
   pending.clear();

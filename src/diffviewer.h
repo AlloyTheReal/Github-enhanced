@@ -23,9 +23,11 @@ public:
     QPlainTextEdit *editor() const { return unified; }
     void setContent(const QString &text, bool patch=true);
     void refreshColors();
+    void setFileOpen(bool open);
 private:
     DiffEditor *unified, *before, *after;
     QLabel *statistics;
+    QWidget *tools, *findTools;
     QComboBox *mode;
     QLineEdit *search;
     QStackedWidget *views;

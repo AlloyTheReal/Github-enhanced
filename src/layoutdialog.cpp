@@ -42,7 +42,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     auto *title = new QLabel("Personnaliser l’interface");
     title->setObjectName("headline");
     root->addWidget(title);
-    auto *hint = new QLabel("Glissez pour déplacer ou redimensionner. Au centre : onglets. Sur un bord : ancrage.");
+    auto *hint = new QLabel("Choisissez un onglet. Les changements sont visibles immédiatement dans la fenêtre.");
     hint->setObjectName("muted");
     hint->setWordWrap(true);
     root->addWidget(hint);
@@ -50,7 +50,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     auto *bodyScroll=new QScrollArea;bodyScroll->setObjectName("layoutBodyScroll");bodyScroll->setWidgetResizable(true);bodyScroll->setFrameShape(QFrame::NoFrame);bodyScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);bodyScroll->setWidget(bodyWidget);root->addWidget(bodyScroll,1);
     auto *left = new QVBoxLayout;
     auto *presets=new GlassComboBox;presets->setObjectName("layoutPreset");presets->setAccessibleName("Modèle de disposition");presets->addItem("Disposition actuelle",QString());presets->addItem("Desktop","desktop");presets->addItem("Revue","review");presets->addItem("Focus","focus");left->addWidget(presets);
-    connect(presets,&QComboBox::activated,this,[this,presets](int index){const auto id=presets->itemData(index).toString();if(id.isEmpty())return;remember();window->resetLayout(id);window->setLayoutEditing(true);refreshPanelList();});
+    connect(presets,&QComboBox::activated,this,[this,presets](int index){const auto id=presets->itemData(index).toString();if(id.isEmpty())return;remember();window->resetLayout(id);window->setLayoutEditing(true);refreshPanelList();refreshTools();});
     auto *map = new LayoutCanvas(window, window->layoutPanels());
     preview = map;
     left->addWidget(map, 1);
@@ -61,7 +61,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     redoButton->setObjectName("layoutRedo");
     undoButton->setText({});undoButton->setIcon(historyIcon(false));undoButton->setAccessibleName("Annuler l’action");undoButton->setToolTip("Annuler l’action");undoButton->setFixedSize(44,36);
     redoButton->setText({});redoButton->setIcon(historyIcon(true));redoButton->setAccessibleName("Rétablir l’action");redoButton->setToolTip("Rétablir l’action");redoButton->setFixedSize(44,36);
-    addButton(history, "Équilibrer", this, [this] {
+    auto *balanceButton=addButton(history, "Équilibrer", this, [this] {
         remember();
         QList<QDockWidget *> visible;
         QList<int> sizes;
@@ -75,7 +75,7 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
         updateDimensions();
         preview->update();
     });
-    left->addLayout(history);
+    root->addLayout(history);
     undoButton->setEnabled(false);
     redoButton->setEnabled(false);
     connect(map, &LayoutCanvas::selectedChanged, this, [this](QDockWidget *d) {
@@ -85,13 +85,12 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
     });
     connect(map, &LayoutCanvas::interactionStarted, this, &LayoutDialog::remember);
     connect(map, &LayoutCanvas::layoutChanged, this, [this] { refreshPanelList(); });
-    body->addLayout(left, 1);
+    auto *panelPreview=new QWidget;panelPreview->setLayout(left);body->addWidget(panelPreview,1);
     auto *tabs = new QTabWidget;
-    tabs->setMinimumWidth(320);tabs->setMaximumWidth(390);tabs->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
-    tabs->tabBar()->hide();
-    auto *inspector=new QWidget;inspector->setMinimumWidth(320);inspector->setMaximumWidth(390);auto *inspectorLayout=new QVBoxLayout(inspector);inspectorLayout->setContentsMargins(0,0,0,0);inspectorLayout->setSpacing(10);
-    auto *section=new GlassComboBox;section->setObjectName("layoutSection");section->setAccessibleName("Section à personnaliser");section->addItems({"Panneaux","Barre d’outils","Profils"});inspectorLayout->addWidget(section);inspectorLayout->addWidget(tabs,1);body->addWidget(inspector);
-    connect(section,&QComboBox::activated,tabs,&QTabWidget::setCurrentIndex);connect(tabs,&QTabWidget::currentChanged,section,[section](int index){QSignalBlocker blocker(section);section->setCurrentIndex(index);});
+    tabs->setMinimumWidth(320);tabs->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
+
+    body->addWidget(tabs,1);
+    connect(tabs,&QTabWidget::currentChanged,this,[panelPreview,balanceButton](int index){panelPreview->setVisible(index==0);balanceButton->setVisible(index==0);});
     auto *panelPage = new QWidget;
     auto *panelLayout = new QVBoxLayout(panelPage);
     panels = new PanelList;prepareList(panels);
@@ -212,11 +211,12 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
 
     auto *toolPage = new QWidget;
     auto *toolLayout = new QVBoxLayout(toolPage);
-    auto *toolHint = new QLabel("Glissez pour réordonner. Cochez pour afficher.");
+    auto *toolHint = new QLabel("Cochez les commandes à afficher. Glissez pour changer leur ordre.");
     toolHint->setWordWrap(true);
     toolLayout->addWidget(toolHint);
     tools = new QListWidget;prepareList(tools);
     tools->setObjectName("toolbarItems");
+    tools->setMinimumHeight(qMax(180,QFontMetrics(tools->font()).height()*4+64));
     auto *toolSearch=new QLineEdit;toolSearch->setObjectName("layoutCommandSearch");toolSearch->setPlaceholderText("Filtrer les commandes");toolSearch->setClearButtonEnabled(true);toolLayout->addWidget(toolSearch);
     connect(toolSearch,&QLineEdit::textChanged,this,[this](const QString &query){for(int i=0;i<tools->count();++i)tools->item(i)->setHidden(!tools->item(i)->text().contains(query.trimmed(),Qt::CaseInsensitive));tools->setDragEnabled(query.trimmed().isEmpty());});
     tools->setDragDropMode(QAbstractItemView::InternalMove);
@@ -234,40 +234,39 @@ LayoutDialog::LayoutDialog(MainWindow *w) : GlassDialog(w), window(w), original(
             tools->setCurrentItem(item);
             applyTools();
         });
-    auto *toolbarVisible = new QCheckBox("Barre d’outils");
+    auto *toolbarVisible = new QCheckBox("Afficher la barre d’outils");toolbarVisible->setObjectName("layoutToolbarVisible");
     toolbarVisible->setChecked(window->mainToolbar->isVisible());
     connect(window->mainToolbar,&QToolBar::visibilityChanged,toolbarVisible,[toolbarVisible](bool visible){QSignalBlocker blocker(toolbarVisible);toolbarVisible->setChecked(visible);});
-    toolLayout->addWidget(toolbarVisible);
-    connect(toolbarVisible, &QCheckBox::toggled, window->mainToolbar, &QWidget::setVisible);
-    auto *toolbarPosition = new GlassComboBox;
+    toolLayout->insertWidget(1,toolbarVisible);
+    connect(toolbarVisible, &QCheckBox::toggled, this, [this](bool visible){remember();window->mainToolbar->setVisible(visible);});
+    auto *toolbarPosition = new GlassComboBox;toolbarPosition->setObjectName("layoutToolbarPosition");
     toolbarPosition->addItem("En haut", int(Qt::TopToolBarArea));
     toolbarPosition->addItem("En bas", int(Qt::BottomToolBarArea));
     toolbarPosition->addItem("À gauche", int(Qt::LeftToolBarArea));
     toolbarPosition->addItem("À droite", int(Qt::RightToolBarArea));
     toolbarPosition->setCurrentIndex(
         toolbarPosition->findData(int(window->toolBarArea(window->mainToolbar))));
-    auto *toolbarStyle = new GlassComboBox;
+    auto *toolbarStyle = new GlassComboBox;toolbarStyle->setObjectName("layoutToolbarStyle");
     toolbarStyle->addItem("Icônes et texte", int(Qt::ToolButtonTextBesideIcon));
     toolbarStyle->addItem("Icônes seulement", int(Qt::ToolButtonIconOnly));
     toolbarStyle->addItem("Texte seulement", int(Qt::ToolButtonTextOnly));
     toolbarStyle->setCurrentIndex(toolbarStyle->findData(int(window->mainToolbar->toolButtonStyle())));
     auto *toolbarAdvanced=new QWidget;auto *toolbarAdvancedLayout=new QVBoxLayout(toolbarAdvanced);toolbarAdvancedLayout->setContentsMargins(0,0,0,0);
-    auto *showToolbarAdvanced=new QToolButton;showToolbarAdvanced->setText("Autres réglages");showToolbarAdvanced->setToolButtonStyle(Qt::ToolButtonTextOnly);showToolbarAdvanced->setCheckable(true);toolLayout->addWidget(showToolbarAdvanced);toolLayout->addWidget(toolbarAdvanced);toolbarAdvanced->hide();connect(showToolbarAdvanced,&QToolButton::toggled,toolbarAdvanced,&QWidget::setVisible);
+    toolLayout->addWidget(toolbarAdvanced);
     auto *toolForm = new QFormLayout;toolForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
     toolForm->addRow("Position", toolbarPosition);
     toolForm->addRow("Présentation", toolbarStyle);
     toolbarAdvancedLayout->addLayout(toolForm);
-    auto *statusVisible = new QCheckBox("Barre d’état");
-    statusVisible->setChecked(window->statusBar()->isVisible());
-    toolbarAdvancedLayout->addWidget(statusVisible);
-    connect(statusVisible, &QCheckBox::toggled, window->statusBar(), &QWidget::setVisible);
+
     connect(toolbarPosition, &QComboBox::activated, this, [this, toolbarPosition] {
+        remember();
         window->addToolBar(Qt::ToolBarArea(toolbarPosition->currentData().toInt()), window->mainToolbar);
     });
     connect(toolbarStyle, &QComboBox::activated, this, [this, toolbarStyle] {
+        remember();
         window->mainToolbar->setToolButtonStyle(Qt::ToolButtonStyle(toolbarStyle->currentData().toInt()));
     });
-    auto *toolScroll=new QScrollArea;toolScroll->setWidgetResizable(true);toolScroll->setFrameShape(QFrame::NoFrame);toolScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);toolScroll->setWidget(toolPage);tabs->addTab(toolScroll,"Commandes");
+    auto *toolScroll=new QScrollArea;toolScroll->setWidgetResizable(true);toolScroll->setFrameShape(QFrame::NoFrame);toolScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);toolScroll->setWidget(toolPage);tabs->addTab(toolScroll,"Barre d’outils");
 
     auto *profilePage = new QWidget;
     auto *profileLayout = new QVBoxLayout(profilePage);
@@ -504,6 +503,9 @@ void LayoutDialog::refreshTools() {
         item->setCheckState(a->isVisible() ? Qt::Checked : Qt::Unchecked);if(a->objectName()==selected)tools->setCurrentItem(item);
     }
     tools->verticalScrollBar()->setValue(scroll);if(auto *search=findChild<QLineEdit *>("layoutCommandSearch"))for(int i=0;i<tools->count();++i)tools->item(i)->setHidden(!tools->item(i)->text().contains(search->text().trimmed(),Qt::CaseInsensitive));
+    if(auto *visible=findChild<QCheckBox *>("layoutToolbarVisible")){QSignalBlocker block(visible);visible->setChecked(!window->mainToolbar->isHidden());}
+    if(auto *position=findChild<QComboBox *>("layoutToolbarPosition"))position->setCurrentIndex(position->findData(int(window->toolBarArea(window->mainToolbar))));
+    if(auto *style=findChild<QComboBox *>("layoutToolbarStyle"))style->setCurrentIndex(style->findData(int(window->mainToolbar->toolButtonStyle())));
     updating = false;
 }
 

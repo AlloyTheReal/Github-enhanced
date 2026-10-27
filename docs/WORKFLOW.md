@@ -14,7 +14,7 @@ Les différences sont calculées sur la branche affichée, qui peut différer de
 
 ## Modifications automatiquement préparées
 
-À l’ouverture et à l’actualisation d’un dépôt, tous les fichiers modifiés non ignorés sont préparés pour le prochain commit. Les fichiers nouveaux, modifiés et supprimés sont inclus. Les boutons Indexer/Désindexer ont été retirés. La préparation est vérifiée de nouveau avant un commit ou une génération Codex.
+À l’ouverture et à l’actualisation d’un dépôt, les fichiers modifiés non ignorés sont cochés par défaut pour le prochain commit. Décochez un fichier pour l’exclure ; son contenu reste sur disque. Le choix est conservé pendant les actualisations du dépôt ouvert. Les fichiers nouveaux, modifiés et supprimés sont inclus. Les boutons Indexer/Désindexer ont été retirés. La préparation est vérifiée de nouveau avant un commit ou une génération Codex et respecte les cases cochées.
 
 La fenêtre active vérifie les modifications toutes les 2,5 secondes lorsqu’aucune opération n’est en cours. Un conflit Git suspend la préparation automatique ; l’application ne considère pas les marqueurs de conflit comme une résolution. Les règles `.gitignore` sont respectées. L’application ne crée ni commit ni push à votre place.
 
@@ -48,7 +48,7 @@ Cliquez sur un commit dans Historique. Le bandeau de droite affiche son résumé
 
 ## Activité et défilement
 
-Les opérations longues ouvrent une fenêtre après un court délai, pour éviter les clignotements lors des opérations immédiates. Elle affiche les étapes et les détails Git. Le pourcentage n’est affiché dans la barre que lorsqu’il est fourni par l’outil ; sinon la barre reste indéterminée. La fenêtre peut être masquée et rouverte avec **Activité** dans la barre d’état. Les erreurs restent affichées.
+Les opérations longues ouvrent une fenêtre après un court délai, pour éviter les clignotements lors des opérations immédiates. Elle affiche les étapes et les détails Git. Le pourcentage n’est affiché dans la barre que lorsqu’il est fourni par l’outil ; sinon la barre reste indéterminée. La fenêtre peut être masquée et rouverte avec le bouton **Activité** flottant en bas à droite. Ce bouton apparaît en bleu pendant une opération et en rouge après un échec ; il disparaît après une réussite. Les erreurs restent affichées.
 
 Les barres sont dessinées comme de vraies capsules avec extrémités arrondies, sans piste opaque ni flèches. Le curseur s’élargit progressivement au survol et son opacité évolue pendant/après le défilement. La zone interactive reste de 14 px, avec un curseur de 36 px minimum. Le glissement, les clics de page et le clavier restent utilisables.
 

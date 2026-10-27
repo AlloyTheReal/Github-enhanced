@@ -187,7 +187,7 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     section("Interface");
     destination("Apparence", 0);
     destination("Couleurs", 1);
-    destination("Disposition", 2);
+
     section("Personnalisation");
     destination("Bibliothèque de thèmes", 3);
     section("Application");
@@ -273,6 +273,14 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     layout->addWidget(settingRow("Matériaux du système",
                                  "Adapte le verre et la transparence aux réglages de macOS.", nativeBox));
 #endif
+    auto *layoutButton = new QPushButton("Personnaliser…");
+    layout->addWidget(settingRow("Disposition de l’espace de travail",
+                                 "Déplacez les panneaux, créez des onglets et choisissez vos commandes.",
+                                 layoutButton));
+    connect(layoutButton, &QPushButton::clicked, this, [this] {
+        reject();
+        emit layoutEditorRequested();
+    });
     layout->addStretch();
     pages->addWidget(scrollPage(appearance));
 
@@ -363,14 +371,6 @@ SettingsDialog::SettingsDialog(const QJsonObject &p, QWidget *parent, GitHubClie
     pages->addWidget(scrollPage(colorPage));
 
     auto *layoutPage = newPage(&layout);
-    auto *layoutButton = new QPushButton("Personnaliser…");
-    layout->addWidget(settingRow("Disposition de l’espace de travail",
-                                 "Déplacez les panneaux, créez des onglets et choisissez vos commandes.",
-                                 layoutButton));
-    connect(layoutButton, &QPushButton::clicked, this, [this] {
-        reject();
-        emit layoutEditorRequested();
-    });
     layout->addStretch();
     pages->addWidget(scrollPage(layoutPage));
 

@@ -18,6 +18,9 @@ public:
   void setRecoveryAction(const QString &title, std::function<void()> action);
   bool running() const { return active; }
 
+signals:
+  void stateChanged(const QString &state);
+
 private:
   QLabel *titleLabel, *detail, *hint;
   QCheckBox *advancedToggle;
