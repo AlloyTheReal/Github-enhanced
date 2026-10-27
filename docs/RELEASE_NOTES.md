@@ -1,4 +1,4 @@
-# GitHub Enhanced 2.2.1
+# GitHub Enhanced 0.2.3
 
 ## Correctif du logo
 
